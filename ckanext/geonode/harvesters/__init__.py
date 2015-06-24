@@ -6,4 +6,4 @@ except ImportError:
     __path__ = pkgutil.extend_path(__path__, __name__)
 
 from ckanext.geonode.harvesters.geonode import GeoNodeHarvester
-from ckanext.geonode.harvesters.utils import GeoNodeClient
+from ckanext.geonode.harvesters.client import GeoNodeClient

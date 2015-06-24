@@ -1,17 +1,25 @@
 # -*- coding: utf-8 -*-
 import logging
+import os
 
 log = logging.getLogger(__name__)
 
 from ckan.common import json
 
 
-class GeoResource(object):
+class GeoNodeResource(object):
+    """"
+    Generic resource from GeoNode.
+    Can be a Layer, a Map or a Document.
+    """
 
     _dict = None
 
     def __init__(self, json_string):
         self._dict = json.loads(json_string)
+
+    def is_spatial(self):
+        return False
 
     def id(self):
         return self._dict['id']
@@ -35,24 +43,6 @@ class GeoResource(object):
     def date_type(self):
         return self._dict['date_type']
 
-    def thumbnail(self):
-        return self._dict['thumbnail_url']
-
-    def srid(self):
-        return self._dict['srid']
-
-    def x0(self):
-        return self._dict['bbox_x0']
-
-    def x1(self):
-        return self._dict['bbox_x1']
-
-    def y0(self):
-        return self._dict['bbox_y0']
-
-    def y1(self):
-        return self._dict['bbox_y1']
-
     def time_start(self):
         return self._dict['temporal_extent_start']
 
@@ -71,6 +61,36 @@ class GeoResource(object):
     def owner_email(self):
         owner = self._dict['owner']
         return owner['email'] or None
+
+
+class GeoResource(GeoNodeResource):
+    """
+    A spatial resource from GeoNode, i.e. a Layer or a Map.
+    """
+
+    def __init__(self, json_string):
+        super(GeoResource, self).__init__(json_string)
+
+    def is_spatial(self):
+        return True
+
+    def thumbnail(self):
+        return self._dict['thumbnail_url']
+
+    def srid(self):
+        return self._dict['srid']
+
+    def x0(self):
+        return self._dict['bbox_x0']
+
+    def x1(self):
+        return self._dict['bbox_x1']
+
+    def y0(self):
+        return self._dict['bbox_y0']
+
+    def y1(self):
+        return self._dict['bbox_y1']
 
 
 class Layer(GeoResource):
@@ -106,3 +126,19 @@ class Map(GeoResource):
 
     def map_data(self):
         return self._dict['MAP_DATA']
+
+
+class Doc(GeoNodeResource):
+
+    def __init__(self, json_string):
+        super(Doc, self).__init__(json_string)
+
+    def doc_file(self):
+        path = self._dict['doc_file']
+        return os.path.basename(path)
+
+    def doc_type(self):
+        return self._dict['doc_type']
+
+    def extension(self):
+        return self._dict['extension']

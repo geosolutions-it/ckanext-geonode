@@ -1,6 +1,9 @@
-from .utils import GeoNodeClient
+from .client import GeoNodeClient
+from .upload import MockFieldStorage
+
 from ckanext.geonode.model.types import Layer
 from ckanext.geonode.model.types import Map
+from ckanext.geonode.model.types import Doc
 
 import logging
 import uuid
@@ -126,6 +129,16 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                     }
                 harvested[map['uuid']] = db_object
 
+            for doc in client.get_documents():
+                log.debug('Found doc %s %s (%s)' % (doc['id'], doc['uuid'], doc['title']))
+                db_object = {
+                    'id': doc['id'],
+                    'uuid': doc['uuid'],
+                    'title': doc['title'],
+                    'type': GEONODE_DOC_TYPE,
+                    }
+                harvested[doc['uuid']] = db_object
+
         except Exception as e:
             self._save_gather_error('Error harvesting GeoNode: %s' % e, harvest_job)
             return None
@@ -204,6 +217,10 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
         if 'type' not in obj:
             log.error("Bad content in harvest object ID: %d GUID: %s [%s]" % (gnid, guid, content))
+            if GEONODE_TYPE in obj:
+                # it means it already contains data read in this fetch stage. We were expecting info from the gather stage instead
+                log.warning("Harvest object is in the wrong state ID: %d GUID: %s" % (gnid, guid))
+
             self._save_object_error("Bad content in harvest object ID: %d GUID: %s [%s]" % (gnid, guid, content), harvest_object)
             return False
 
@@ -222,6 +239,10 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 map_blob_json = client.get_map_data(gnid)
                 # enriching the json with some more info
                 objdict['MAP_DATA'] = map_blob_json
+
+            elif objtype == GEONODE_DOC_TYPE:
+                georesource_json = client.get_doc_json(gnid)
+                objdict = json.loads(georesource_json)
 
             else:
                 log.error("Unknown GeoNode resource type %s for ID: %d GUID: %s " % (objtype, gnid, guid))
@@ -248,13 +269,13 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                                     (guid, objtype, e), harvest_object)
             return False
 
-        log.debug('JSON content saved for %s (len %s)', objtype, len(final_json))
+        log.debug('JSON content saved for %s (size %s)' % (objtype, len(final_json)))
         return True
 
     def import_stage(self, harvest_object):
 
         log = logging.getLogger(__name__ + '.import')
-        log.debug('Import stage for harvest object: %s', harvest_object.id)
+        log.debug('Import stage for harvest object: %s' % harvest_object.id)
 
         if not harvest_object:
             log.error('No harvest object received')
@@ -291,8 +312,10 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             content_new = harvest_object.content
 
             is_modified = content_old != content_new
+            prev_job_id = previous_object.job.id
         else:
             is_modified = True
+            prev_job_id = None
 
         # Error if GUID not present
         if not harvest_object.guid:
@@ -353,8 +376,10 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             model.Session.flush()
 
             try:
-                package_id = p.toolkit.get_action('package_create')(context, package_dict)
-                log.info('Created new package %s with guid %s', package_id, harvest_object.guid)
+                # package_id = p.toolkit.get_action('package_create')(context, package_dict)
+                package_id = self._create_package(context, package_dict, harvest_object)
+                log.info('Created new package %s with guid %s' % (package_id, harvest_object.guid))
+                self._post_package_create(package_id, harvest_object)
             except p.toolkit.ValidationError as e:
                 self._save_object_error('Validation Error: %s' % str(e.error_summary), harvest_object, 'Import')
                 return False
@@ -367,7 +392,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
                 # Assign the previous job id to the new object to
                 # avoid losing history
-                harvest_object.harvest_job_id = previous_object.job.id
+                harvest_object.harvest_job_id = prev_job_id
                 harvest_object.add()
 
                 harvest_object.metadata_modified_date = previous_object.metadata_modified_date
@@ -383,8 +408,10 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
                 package_dict['id'] = harvest_object.package_id
                 try:
-                    package_id = p.toolkit.get_action('package_update')(context, package_dict)
-                    log.info('Updated package %s with guid %s', package_id, harvest_object.guid)
+                    #package_id = p.toolkit.get_action('package_update')(context, package_dict)
+                    package_id = self._update_package(context, package_dict, harvest_object)
+                    log.info('Updated package %s with guid %s' % (package_id, harvest_object.guid))
+                    self._post_package_update(package_id, harvest_object)
                 except p.toolkit.ValidationError as e:
                     self._save_object_error('Validation Error: %s' % str(e.error_summary), harvest_object, 'Import')
                     return False
@@ -392,6 +419,72 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         model.Session.commit()
 
         return True
+
+    def _create_package(self, context, package_dict, harvest_object):
+
+        json_dict = json.loads(harvest_object.content)
+        doc_type = json_dict[GEONODE_TYPE]
+
+        if doc_type == GEONODE_LAYER_TYPE or doc_type == GEONODE_MAP_TYPE:
+            package_id = p.toolkit.get_action('package_create')(context, package_dict)
+
+        elif doc_type == GEONODE_DOC_TYPE:
+            # doc resources shall be added one by one
+            # http://docs.ckan.org/en/ckan-2.2/api.html#ckan.logic.action.create.resource_create
+
+            resources = package_dict.pop('resources', None)
+
+            # create the dataset
+            package_id = p.toolkit.get_action('package_create')(context, package_dict)
+            log.debug('Base package created: %s' % package_id)
+
+            # add the resources
+            for resource in resources:
+                log.debug('Adding resource %s to package %s' % (resource['name'], package_id))
+                resource['package_id'] = package_id
+                created_resource = p.toolkit.get_action('resource_create')(context, resource)
+                log.debug('Added resource %s to package %s with uuid %s' % (resource['name'], package_id, created_resource['id']))
+
+        else:
+            log.error('Unknown GeoNode type %s' % doc_type)
+            return None
+
+        return package_id
+
+    def _update_package(self, context, package_dict, harvest_object):
+
+        json_dict = json.loads(harvest_object.content)
+        doc_type = json_dict[GEONODE_TYPE]
+
+        if doc_type == GEONODE_LAYER_TYPE or doc_type == GEONODE_MAP_TYPE:
+            package_id = p.toolkit.get_action('package_update')(context, package_dict)
+
+        elif doc_type == GEONODE_DOC_TYPE:
+            # Doc resources will be replaced since we don't know if the data changed somehow.
+            # 1) update the package, with the new values except the resource
+            # 2) update the resource(s) one by one [TODO]
+            resources = package_dict.pop('resources', None)
+
+            # create the dataset
+            package_id = p.toolkit.get_action('package_update')(context, package_dict)
+            log.debug('Base package updated: %s' % package_id)
+
+            # todo: check what's changed in the resources: have previous res been removed?
+
+            # add the resources
+            # (we're adding the resources from scratch instead of updating them -- the downside is that we can't have
+            # permalinks to resources since the ID will be recreated)
+            for resource in resources:
+                log.debug('Adding resource %s to package %s' % (resource['name'], package_id))
+                resource['package_id'] = package_id
+                created_resource = p.toolkit.get_action('resource_create')(context, resource)
+                log.debug('Added resource %s to package %s with uuid %s' % (resource['name'], package_id, created_resource['id']))
+
+        else:
+            log.error('Unknown GeoNode type %s' % doc_type)
+            return None
+
+        return package_id
 
     def get_package_dict(self, harvest_object):
         '''
@@ -414,6 +507,8 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             return self.get_layer_package_dict(harvest_object, harvest_object.content)
         elif doc_type == GEONODE_MAP_TYPE:
             return self.get_map_package_dict(harvest_object, harvest_object.content)
+        elif doc_type == GEONODE_DOC_TYPE:
+            return self.get_doc_package_dict(harvest_object, harvest_object.content)
         else:
             log.error('Unknown GeoNode type %s' % doc_type)
             return None
@@ -428,7 +523,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         resource = {}
         resource['format'] = 'wms'
         resource['url'] = self.source_config['geoserver_url'] + "/wms"
-        resource['name'] = "%s:%s" % (layer.workspace, layer.name())
+        resource['name'] = "%s:%s" % (layer.workspace(), layer.name())
         resource['description'] = p.toolkit._('WMS resource')
         package_dict['resources'].append(resource)
 
@@ -452,6 +547,42 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         resource['description'] = p.toolkit._('Full map context')
         resource['map_data'] = geomap.map_data()
 
+        package_dict['resources'].append(resource)
+
+        self._addExtras(package_dict, extras)
+
+        return package_dict
+
+    def get_doc_package_dict(self, harvest_object, json_map):
+
+        doc = Doc(json_map)
+
+        package_dict, extras = self.get_resource_package_dict(harvest_object, doc)
+
+        # Add WMS resource
+        resource = {}
+        resource['format'] = doc.extension()
+        # Not sure about this: we're creating a resource in CKAN, so we'll have to create a URL for this.
+        # "url" is mandatory, and not providing it will raise a Validation Error
+        resource['url'] = '%s/documents/%s/download' % (harvest_object.source.url, doc.id())
+        resource['source_url'] = '%s/documents/%s/download' % (harvest_object.source.url, doc.id())
+
+        resource['name'] = doc.doc_file()
+        resource['description'] = doc.doc_type()
+
+        # download doc content and add it in the resource
+        # TODO: download should only be performed when needed: now we do it also when the metadata has not changed
+
+        baseurl = harvest_object.source.url
+        client = GeoNodeClient(baseurl)
+        doc_content = client.get_document_download(doc.id())
+
+        log.info('Downloaded document "%s" (size %d)' % (doc.doc_file(), len(doc_content)))
+
+        storage = MockFieldStorage(doc_content, doc.doc_file())
+        resource['upload'] = storage
+
+        #
         package_dict['resources'].append(resource)
 
         self._addExtras(package_dict, extras)
@@ -512,67 +643,75 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         if georesource.date_type() == 'publication':
             extras['publication_date'] = georesource.date()
 
-        if georesource.srid():
-            extras['spatial-reference-system'] = georesource.srid()
+        if georesource.is_spatial():
 
-        ## Some of the extras we may want to add in the future:
-            ## Essentials
-            #'spatial-reference-system',
-            #'guid',
-            ## Usefuls
-            #'dataset-reference-date',
-            #'metadata-language',  # Language
-            #'metadata-date',  # Released
-            #'coupled-resource',
-            #'contact-email',
-            #'frequency-of-update',
-            #'spatial-data-service-type',
-            #extras['progress'] = ''
-            #extras['resource-type'] = ''
-            #extras['licence']
-            #extras['access_constraints']
-            #extras['graphic-preview-file']
-            #extras['graphic-preview-description']
-            #extras['graphic-preview-type']
-            #extras['responsible-party'] = [{'name': k, 'roles': v} for k, v in parties.iteritems()]
+            if georesource.srid():
+                extras['spatial-reference-system'] = georesource.srid()
 
-        if georesource.thumbnail():
-            extras['graphic-preview-file'] = georesource.thumbnail()
+            ## Some of the extras we may want to add in the future:
+                ## Essentials
+                #'spatial-reference-system',
+                #'guid',
+                ## Usefuls
+                #'dataset-reference-date',
+                #'metadata-language',  # Language
+                #'metadata-date',  # Released
+                #'coupled-resource',
+                #'contact-email',
+                #'frequency-of-update',
+                #'spatial-data-service-type',
+                #extras['progress'] = ''
+                #extras['resource-type'] = ''
+                #extras['licence']
+                #extras['access_constraints']
+                #extras['graphic-preview-file']
+                #extras['graphic-preview-description']
+                #extras['graphic-preview-type']
+                #extras['responsible-party'] = [{'name': k, 'roles': v} for k, v in parties.iteritems()]
 
-        # Set up bounding box
+            if georesource.thumbnail():
+                extras['graphic-preview-file'] = georesource.thumbnail()
 
-        extras['bbox-east-long'] = georesource.x1()
-        extras['bbox-north-lat'] = georesource.y1()
-        extras['bbox-south-lat'] = georesource.y0()
-        extras['bbox-west-long'] = georesource.x0()
+            # Set up bounding box
 
-        try:
-            xmin = float(georesource.x0())
-            xmax = float(georesource.x1())
-            ymin = float(georesource.y0())
-            ymax = float(georesource.y1())
-        except ValueError as e:
-            self._save_object_error('Error parsing bounding box value: {0}'.format(str(e)),
-                                    harvest_object, 'Import')
-        else:
-            # Construct a GeoJSON extent so ckanext-spatial can register the extent geometry
+            extras['bbox-east-long'] = georesource.x1()
+            extras['bbox-north-lat'] = georesource.y1()
+            extras['bbox-south-lat'] = georesource.y0()
+            extras['bbox-west-long'] = georesource.x0()
 
-            # Some publishers define the same two corners for the bbox (ie a point),
-            # that causes problems in the search if stored as polygon
-            if xmin == xmax or ymin == ymax:
-                extent_string = Template('{"type": "Point", "coordinates": [$x, $y]}').substitute(
-                    x=xmin, y=ymin
-                )
-                self._save_object_error('Point extent defined instead of polygon',
-                                 harvest_object, 'Import')
+            try:
+                xmin = float(georesource.x0())
+                xmax = float(georesource.x1())
+                ymin = float(georesource.y0())
+                ymax = float(georesource.y1())
+            except ValueError as e:
+                self._save_object_error('Error parsing bounding box value: {0}'.format(str(e)),
+                                        harvest_object, 'Import')
             else:
-                extent_string = self.extent_template.substitute(
-                    xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax
-                )
+                # Construct a GeoJSON extent so ckanext-spatial can register the extent geometry
 
-            extras['spatial'] = extent_string.strip()
+                # Some publishers define the same two corners for the bbox (ie a point),
+                # that causes problems in the search if stored as polygon
+                if xmin == xmax or ymin == ymax:
+                    extent_string = Template('{"type": "Point", "coordinates": [$x, $y]}').substitute(
+                        x=xmin, y=ymin
+                    )
+                    self._save_object_error('Point extent defined instead of polygon',
+                                     harvest_object, 'Import')
+                else:
+                    extent_string = self.extent_template.substitute(
+                        xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax
+                    )
+
+                extras['spatial'] = extent_string.strip()
 
         return package_dict, extras
+
+    def _post_package_create(self, package_id, harvest_object):
+        pass
+
+    def _post_package_update(self, package_id, harvest_object):
+        pass
 
     def _addExtras(self, package_dict, extras):
 
@@ -592,7 +731,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         '''
         if config_str:
             self.source_config = json.loads(config_str)
-            log.debug('Using config: %r', self.source_config)
+            log.debug('Using config: %r' % self.source_config)
         else:
             self.source_config = {}
 
