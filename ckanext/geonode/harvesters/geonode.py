@@ -525,6 +525,12 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         resource['url'] = self.source_config['geoserver_url'] + "/wms"
         resource['name'] = "%s:%s" % (layer.workspace(), layer.name())
         resource['description'] = p.toolkit._('WMS resource')
+        resource['geoserver_base_url'] = self.source_config['geoserver_url']
+        resource['store'] = layer.store()
+        resource['workspace'] = layer.workspace()
+        resource['layer'] = layer.name()
+        resource['is_vector'] = layer.is_vector()
+
         package_dict['resources'].append(resource)
 
         extras['is_vector'] = layer.is_vector()

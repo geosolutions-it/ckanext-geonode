@@ -104,6 +104,9 @@ class Layer(GeoResource):
     def name(self):
         return self._dict['name']
 
+    def store(self):
+        return self._dict['store']
+
     def is_vector(self):
         return self._dict['storeType'] == 'dataStore'
 
