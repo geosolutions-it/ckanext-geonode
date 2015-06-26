@@ -533,6 +533,20 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
         package_dict['resources'].append(resource)
 
+        # if it's vectorial, add a WFS resource as well. This may be used for chart preview
+        if layer.is_vector():
+            wfs_resource = {}
+            wfs_resource['format'] = 'wfs'
+            wfs_resource['url'] = self.source_config['geoserver_url'] + "/wfs"
+            wfs_resource['name'] = "%s:%s" % (layer.workspace(), layer.name())
+            wfs_resource['description'] = p.toolkit._('WFS resource')
+            wfs_resource['geoserver_base_url'] = self.source_config['geoserver_url']
+            wfs_resource['store'] = layer.store()
+            wfs_resource['workspace'] = layer.workspace()
+            wfs_resource['layer'] = layer.name()
+            wfs_resource['is_vector'] = layer.is_vector()
+            package_dict['resources'].append(wfs_resource)
+
         extras['is_vector'] = layer.is_vector()
 
         self._addExtras(package_dict, extras)
