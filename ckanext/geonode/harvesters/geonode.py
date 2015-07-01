@@ -1,5 +1,7 @@
+
 from .client import GeoNodeClient
-from .upload import MockFieldStorage
+from .upload import GeonodeDataDownloader, WFSCSVDownloader
+from . import utils
 
 from ckanext.geonode.model.types import Layer
 from ckanext.geonode.model.types import Map
@@ -7,6 +9,7 @@ from ckanext.geonode.model.types import Doc
 
 import logging
 import uuid
+from tempfile import SpooledTemporaryFile
 
 from string import Template
 from pylons import config
@@ -27,8 +30,6 @@ from ckanext.harvest.harvesters.base import HarvesterBase
 from ckanext.harvest.model import HarvestObject
 from ckanext.harvest.model import HarvestObjectExtra as HOExtra
 
-from ckan.logic import ValidationError, NotFound, get_action
-
 
 log = logging.getLogger(__name__)
 
@@ -37,10 +38,14 @@ GEONODE_LAYER_TYPE = 'LAYER'
 GEONODE_MAP_TYPE = 'MAP'
 GEONODE_DOC_TYPE = 'DOC'
 
+RESOURCE_DOWNLOADER = 'DOWNLOADER__'
+
+TEMP_FILE_THRESHOLD_SIZE = 5 * 1024 * 1024
+
 
 class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
     '''
-    A Harvester for GeoNode's layers, map, data (todo).
+    A Harvester for GeoNode's layers, map, docs.
     '''
 
     implements(IHarvester)
@@ -77,6 +82,14 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
             if not isinstance(source_config_obj['geoserver_url'], basestring):
                 raise ValueError('geoserver_url should be a string')
+
+            if 'import_wfs_as_csv' in source_config_obj:
+                if not source_config_obj['import_wfs_as_csv'] in ['true', 'false']:
+                    raise ValueError('import_wfs_as_csv should be either true or false')
+
+            if 'import_wfs_as_wfs' in source_config_obj:
+                if not isinstance(source_config_obj['import_wfs_as_wfs'], bool):
+                    raise ValueError('import_wfs_as_wfs should be either true or false')
 
             if 'keyword_group_mapping' in source_config_obj:
                 mapping = source_config_obj['keyword_group_mapping']
@@ -422,67 +435,77 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
     def _create_package(self, context, package_dict, harvest_object):
 
-        json_dict = json.loads(harvest_object.content)
-        doc_type = json_dict[GEONODE_TYPE]
+        # Resources with data to be downloaded will be added later
+        # http://docs.ckan.org/en/ckan-2.2/api.html#ckan.logic.action.create.resource_create
+        resources = package_dict.pop('resources', None)
+        downloadable_resources = []
+        normal_resources = []
+        for resource in resources:
+            if RESOURCE_DOWNLOADER in resource:
+                downloadable_resources.append(resource)
+            else:
+                normal_resources.append(resource)
 
-        if doc_type == GEONODE_LAYER_TYPE or doc_type == GEONODE_MAP_TYPE:
-            package_id = p.toolkit.get_action('package_create')(context, package_dict)
+        if len(normal_resources):
+            package_dict['resources'] = normal_resources
 
-        elif doc_type == GEONODE_DOC_TYPE:
-            # doc resources shall be added one by one
-            # http://docs.ckan.org/en/ckan-2.2/api.html#ckan.logic.action.create.resource_create
+        package_id = p.toolkit.get_action('package_create')(context, package_dict)
 
-            resources = package_dict.pop('resources', None)
+        # Handle data downloads
+        for resource in downloadable_resources:
+            resource['package_id'] = package_id
+            log.info('Handling download data for resource %s in package %s' % (resource['name'], package_id))
+            downloader = resource.pop(RESOURCE_DOWNLOADER)
 
-            # create the dataset
-            package_id = p.toolkit.get_action('package_create')(context, package_dict)
-            log.debug('Base package created: %s' % package_id)
-
-            # add the resources
-            for resource in resources:
-                log.debug('Adding resource %s to package %s' % (resource['name'], package_id))
-                resource['package_id'] = package_id
+            with SpooledTemporaryFile(max_size=TEMP_FILE_THRESHOLD_SIZE) as f:
+                fieldStorage = downloader.download(f)
+                resource['upload'] = fieldStorage
+                log.info('Create resource %s in package %s', resource['name'], package_id)
                 created_resource = p.toolkit.get_action('resource_create')(context, resource)
-                log.debug('Added resource %s to package %s with uuid %s' % (resource['name'], package_id, created_resource['id']))
-
-        else:
-            log.error('Unknown GeoNode type %s' % doc_type)
-            return None
+                log.debug('Added resource %s to package %s with uuid %s', resource['name'], package_id, created_resource['id'])
 
         return package_id
 
     def _update_package(self, context, package_dict, harvest_object):
 
-        json_dict = json.loads(harvest_object.content)
-        doc_type = json_dict[GEONODE_TYPE]
+        # Resources will be replaced since we don't know if the data changed somehow.
+        # 1) update the package, with the new values except the resource that need downloading
+        # 2) update the resource(s) one by one
+        # shoud we remove by hands the old resource data from the datastore? TODO
 
-        if doc_type == GEONODE_LAYER_TYPE or doc_type == GEONODE_MAP_TYPE:
-            package_id = p.toolkit.get_action('package_update')(context, package_dict)
+        resources = package_dict.pop('resources', None)
+        downloadable_resources = []
+        normal_resources = []
+        for resource in resources:
+            if resource[RESOURCE_DOWNLOADER]:
+                downloadable_resources.append(resource)
+            else:
+                normal_resources.append(resource)
 
-        elif doc_type == GEONODE_DOC_TYPE:
-            # Doc resources will be replaced since we don't know if the data changed somehow.
-            # 1) update the package, with the new values except the resource
-            # 2) update the resource(s) one by one [TODO]
-            resources = package_dict.pop('resources', None)
+        if len(normal_resources):
+            package_dict['resources'] = normal_resources
 
-            # create the dataset
-            package_id = p.toolkit.get_action('package_update')(context, package_dict)
-            log.debug('Base package updated: %s' % package_id)
+        package_id = p.toolkit.get_action('package_update')(context, package_dict)
 
-            # todo: check what's changed in the resources: have previous res been removed?
+        # Handle data downloads
 
-            # add the resources
-            # (we're adding the resources from scratch instead of updating them -- the downside is that we can't have
-            # permalinks to resources since the ID will be recreated)
-            for resource in resources:
-                log.debug('Adding resource %s to package %s' % (resource['name'], package_id))
-                resource['package_id'] = package_id
+        # TODO: check what's changed in the resources: have previous res been removed?
+
+        # add the resources
+        # (we're adding the resources from scratch instead of updating them -- the downside is that we can't have
+        # permalinks to resources since the ID will be recreated)
+
+        for resource in downloadable_resources:
+            resource['package_id'] = package_id
+            log.info('Handling download data for resource %s in package %s' % (resource['name'], package_id))
+            downloader = resource.pop(RESOURCE_DOWNLOADER)
+
+            with SpooledTemporaryFile(max_size=TEMP_FILE_THRESHOLD_SIZE) as f:
+                fieldStorage = downloader.download(f)
+                resource['upload'] = fieldStorage
+                log.info('Create resource %s ', resource['name'], package_id)
                 created_resource = p.toolkit.get_action('resource_create')(context, resource)
-                log.debug('Added resource %s to package %s with uuid %s' % (resource['name'], package_id, created_resource['id']))
-
-        else:
-            log.error('Unknown GeoNode type %s' % doc_type)
-            return None
+                log.debug('Added resource %s to package %s with uuid %s', resource['name'], package_id, created_resource['id'])
 
         return package_id
 
@@ -519,11 +542,13 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
         package_dict, extras = self.get_resource_package_dict(harvest_object, layer)
 
+        full_layer_name = "%s:%s" % (layer.workspace(), layer.name())
+
         # Add WMS resource
         resource = {}
         resource['format'] = 'wms'
         resource['url'] = self.source_config['geoserver_url'] + "/wms"
-        resource['name'] = "%s:%s" % (layer.workspace(), layer.name())
+        resource['name'] = full_layer_name
         resource['description'] = p.toolkit._('WMS resource')
         resource['geoserver_base_url'] = self.source_config['geoserver_url']
         resource['store'] = layer.store()
@@ -534,17 +559,35 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         package_dict['resources'].append(resource)
 
         # if it's vectorial, add a WFS resource as well. This may be used for chart preview
-        if layer.is_vector():
+        if layer.is_vector() and self._get_config_value('import_wfs_as_wfs', False):
             wfs_resource = {}
             wfs_resource['format'] = 'wfs'
             wfs_resource['url'] = self.source_config['geoserver_url'] + "/wfs"
-            wfs_resource['name'] = "%s:%s" % (layer.workspace(), layer.name())
+            wfs_resource['name'] = full_layer_name
             wfs_resource['description'] = p.toolkit._('WFS resource')
             wfs_resource['geoserver_base_url'] = self.source_config['geoserver_url']
             wfs_resource['store'] = layer.store()
             wfs_resource['workspace'] = layer.workspace()
             wfs_resource['layer'] = layer.name()
             wfs_resource['is_vector'] = layer.is_vector()
+            package_dict['resources'].append(wfs_resource)
+
+        # if it's vectorial, add a CSV resource as well. This may be used for chart preview
+        if layer.is_vector() and self._get_config_value('import_wfs_as_csv', False):
+            wfs_resource = {}
+            wfs_resource['format'] = 'csv'
+            wfs_resource['url'] = utils.get_wfs_getfeatures_url(self.source_config['geoserver_url'], full_layer_name)
+
+            wfs_resource['name'] = full_layer_name
+            wfs_resource['description'] = p.toolkit._('CSV resource')
+            wfs_resource['geoserver_base_url'] = self.source_config['geoserver_url']
+            wfs_resource['store'] = layer.store()
+            wfs_resource['workspace'] = layer.workspace()
+            wfs_resource['layer'] = layer.name()
+            wfs_resource['is_vector'] = layer.is_vector()
+            wfs_resource[RESOURCE_DOWNLOADER] = \
+                WFSCSVDownloader(self.source_config['geoserver_url'], full_layer_name, layer.name() + ".csv")
+
             package_dict['resources'].append(wfs_resource)
 
         extras['is_vector'] = layer.is_vector()
@@ -579,7 +622,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
         package_dict, extras = self.get_resource_package_dict(harvest_object, doc)
 
-        # Add WMS resource
+        # Add resource
         resource = {}
         resource['format'] = doc.extension()
         # Not sure about this: we're creating a resource in CKAN, so we'll have to create a URL for this.
@@ -590,19 +633,10 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         resource['name'] = doc.doc_file()
         resource['description'] = doc.doc_type()
 
-        # download doc content and add it in the resource
-        # TODO: download should only be performed when needed: now we do it also when the metadata has not changed
+        # Prepare the data downloader
+        resource[RESOURCE_DOWNLOADER] = \
+            GeonodeDataDownloader(harvest_object.source.url, doc.id(), doc.doc_file())
 
-        baseurl = harvest_object.source.url
-        client = GeoNodeClient(baseurl)
-        doc_content = client.get_document_download(doc.id())
-
-        log.info('Downloaded document "%s" (size %d)' % (doc.doc_file(), len(doc_content)))
-
-        storage = MockFieldStorage(doc_content, doc.doc_file())
-        resource['upload'] = storage
-
-        #
         package_dict['resources'].append(resource)
 
         self._addExtras(package_dict, extras)
@@ -754,6 +788,17 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             log.debug('Using config: %r' % self.source_config)
         else:
             self.source_config = {}
+
+    def _get_config_value(self, key, default):
+        if key in self.source_config:
+            # trivial heuristics
+            if 'true' == self.source_config[key]:
+                return True
+            if 'false' == self.source_config[key]:
+                return False
+            return self.source_config[key]
+        else:
+            return default
 
     def _get_object_extra(self, harvest_object, key):
         '''
