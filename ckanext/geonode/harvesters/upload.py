@@ -52,11 +52,12 @@ class GeonodeDataDownloader(Downloader):
         client = GeoNodeClient(self.url)
         doc_content = client.get_document_download(self.doc_id)
 
-        log.info('Downloaded document "%s" (size %d)' % (self.filename, len(doc_content)))
+        log.info('Downloaded document "%s" (size %d)', self.filename, len(doc_content))
 
         storage = MockFieldStorage(self.filename, content=doc_content)
 
         return storage
+
 
 class WFSCSVDownloader(Downloader):
 
@@ -80,9 +81,3 @@ class WFSCSVDownloader(Downloader):
         size = f.tell()
         f.seek(old_file_position, os.SEEK_SET)
         return size
-
-
-
-
-
-

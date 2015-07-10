@@ -34,7 +34,7 @@ class GeoNodeClient(object):
 
         url = '%s/api/%s/' % (self.baseurl, resType)
 
-        log.info('Retrieving %s at GeoNode URL %s' % (resType, url))
+        log.info('Retrieving %s at GeoNode URL %s', resType, url)
         request = urllib2.Request(url)
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(), urllib2.HTTPRedirectHandler())
 
@@ -50,7 +50,7 @@ class GeoNodeClient(object):
             luuid = layer['uuid']
             ltitle = layer['title']
 
-            log.info('%s: found %s %s %s' % (resType, lid, luuid, ltitle))
+            log.info('%s: found %s %s %s', resType, lid, luuid, ltitle)
 
             ret.append({'id': lid, 'uuid': luuid, 'title': ltitle})
 
@@ -70,7 +70,7 @@ class GeoNodeClient(object):
 
         url = '%s/api/%s/%d/' % (self.baseurl, resType, id)
 
-        log.info('Connecting to GeoNode at %s' % url)
+        log.info('Connecting to GeoNode at %s', url)
         request = urllib2.Request(url)
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(), urllib2.HTTPRedirectHandler())
 
@@ -83,7 +83,7 @@ class GeoNodeClient(object):
 
         url = '%s/maps/%d/data' % (self.baseurl, id)
 
-        log.info('Retrieve blob data for map #%d' % id)
+        log.info('Retrieve blob data for map #%d', id)
         request = urllib2.Request(url)
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(), urllib2.HTTPRedirectHandler())
 
@@ -100,7 +100,7 @@ class GeoNodeClient(object):
 
         url = '%s/documents/%d/download' % (self.baseurl, id)
 
-        log.info('Retrieve blob data for document #%d' % id)
+        log.info('Retrieve blob data for document #%d', id)
         request = urllib2.Request(url)
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(), urllib2.HTTPRedirectHandler())
 
