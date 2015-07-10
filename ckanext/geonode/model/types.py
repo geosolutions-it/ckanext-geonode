@@ -18,6 +18,9 @@ class GeoNodeResource(object):
     def __init__(self, json_string):
         self._dict = json.loads(json_string)
 
+    def get(self, key):
+        return self._dict.get(key)
+
     def is_spatial(self):
         return False
 

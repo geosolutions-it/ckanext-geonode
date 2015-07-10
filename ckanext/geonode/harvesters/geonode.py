@@ -24,6 +24,7 @@ from ckan.common import json
 from ckan.lib.navl.validators import not_empty
 
 from ckan.plugins.core import SingletonPlugin, implements
+from ckan.logic import NotFound, get_action
 
 from ckanext.harvest.interfaces import IHarvester
 from ckanext.harvest.harvesters.base import HarvesterBase
@@ -41,6 +42,12 @@ GEONODE_DOC_TYPE = 'DOC'
 RESOURCE_DOWNLOADER = 'DOWNLOADER__'
 
 TEMP_FILE_THRESHOLD_SIZE = 5 * 1024 * 1024
+
+CONFIG_GEOSERVERURL = 'geoserver_url'
+CONFIG_KEYWORD_MAPPING = 'keyword_group_mapping'
+CONFIG_GROUP_MAPPING_FIELDNAME = 'group_mapping_fieldname'
+CONFIG_GROUP_MAPPING = 'group_mapping'
+CONFIG_IMPORT_FIELDS = 'import_fields'
 
 
 class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
@@ -73,14 +80,16 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         if not source_config:
             return source_config
 
+        log = logging.getLogger(__name__ + '.geonode.config')
+
         try:
             source_config_obj = json.loads(source_config)
 
             # GeoNode does not expose the internal GeoServer URL, so we have to config it on its own
-            if not 'geoserver_url' in source_config_obj:
+            if not CONFIG_GEOSERVERURL in source_config_obj:
                 raise ValueError('geoserver_url is mandatory')
 
-            if not isinstance(source_config_obj['geoserver_url'], basestring):
+            if not isinstance(source_config_obj[CONFIG_GEOSERVERURL], basestring):
                 raise ValueError('geoserver_url should be a string')
 
             if 'import_wfs_as_csv' in source_config_obj:
@@ -91,20 +100,32 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 if not isinstance(source_config_obj['import_wfs_as_wfs'], bool):
                     raise ValueError('import_wfs_as_wfs should be either true or false')
 
-            if 'keyword_group_mapping' in source_config_obj:
-                mapping = source_config_obj['keyword_group_mapping']
-                if not isinstance(mapping, dict):
-                    raise ValueError('keyword_group_mapping should be a dict (it maps group names to list of regex)')
-                for k, v in mapping:
-                    if not isinstance(k, basestring):
-                        raise ValueError('keyword_group_mapping keys should be strings (it maps group names to list of regex)')
-                    if not isinstance(v, list):
-                        raise ValueError('keyword_group_mapping values should be lists (it maps group names to list of regex)')
+            if CONFIG_IMPORT_FIELDS in source_config_obj:
+                if not isinstance(source_config_obj[CONFIG_IMPORT_FIELDS], list):
+                    raise ValueError('%s should be a list', CONFIG_IMPORT_FIELDS)
+
+            self.checkMapping(CONFIG_KEYWORD_MAPPING, source_config_obj, list)
+            self.checkMapping(CONFIG_GROUP_MAPPING, source_config_obj, basestring)
+
+            if CONFIG_GROUP_MAPPING in source_config_obj and CONFIG_GROUP_MAPPING_FIELDNAME not in source_config_obj:
+                raise ValueError('%s needs also %s to be defined', CONFIG_GROUP_MAPPING, CONFIG_GROUP_MAPPING_FIELDNAME)
 
         except ValueError as e:
+            log.warning("Config parsing error: %r", e)
             raise e
 
         return source_config
+
+    def checkMapping(self, key, source_config_obj, datatype):
+        if key in source_config_obj:
+            mapping = source_config_obj[key]
+            if not isinstance(mapping, dict):
+                raise ValueError('%s should be a dict' % key)
+            for k, v in mapping.iteritems():
+                if not isinstance(k, basestring):
+                    raise ValueError('%s keys should be strings' % key)
+                if not isinstance(v, datatype):
+                    raise ValueError('%s values should be %r' % (key, datatype))
 
     def gather_stage(self, harvest_job):
         log = logging.getLogger(__name__ + '.geonode.gather')
@@ -413,7 +434,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 # Delete the previous object to avoid cluttering the object table
                 previous_object.delete()
 
-                log.info('Document with GUID %s unchanged, skipping...' % (harvest_object.guid))
+                log.info('Document with GUID %s unchanged, skipping...', harvest_object.guid)
             else:
                 package_schema = logic.schema.default_update_package_schema()
                 package_schema['tags'] = tag_schema
@@ -423,7 +444,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 try:
                     #package_id = p.toolkit.get_action('package_update')(context, package_dict)
                     package_id = self._update_package(context, package_dict, harvest_object)
-                    log.info('Updated package %s with guid %s' % (package_id, harvest_object.guid))
+                    log.info('Updated package %s with guid %s', package_id, harvest_object.guid)
                     self._post_package_update(package_id, harvest_object)
                 except p.toolkit.ValidationError as e:
                     self._save_object_error('Validation Error: %s' % str(e.error_summary), harvest_object, 'Import')
@@ -441,7 +462,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         downloadable_resources = []
         normal_resources = []
         for resource in resources:
-            if RESOURCE_DOWNLOADER in resource:
+            if resource.get(RESOURCE_DOWNLOADER, None):
                 downloadable_resources.append(resource)
             else:
                 normal_resources.append(resource)
@@ -454,7 +475,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         # Handle data downloads
         for resource in downloadable_resources:
             resource['package_id'] = package_id
-            log.info('Handling download data for resource %s in package %s' % (resource['name'], package_id))
+            log.info('Handling download data for resource %s in package %s', resource['name'], package_id)
             downloader = resource.pop(RESOURCE_DOWNLOADER)
 
             with SpooledTemporaryFile(max_size=TEMP_FILE_THRESHOLD_SIZE) as f:
@@ -477,7 +498,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         downloadable_resources = []
         normal_resources = []
         for resource in resources:
-            if resource[RESOURCE_DOWNLOADER]:
+            if resource.get(RESOURCE_DOWNLOADER, None):
                 downloadable_resources.append(resource)
             else:
                 normal_resources.append(resource)
@@ -503,7 +524,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             with SpooledTemporaryFile(max_size=TEMP_FILE_THRESHOLD_SIZE) as f:
                 fieldStorage = downloader.download(f)
                 resource['upload'] = fieldStorage
-                log.info('Create resource %s ', resource['name'], package_id)
+                log.info('Create resource %s in package %s', resource['name'], package_id)
                 created_resource = p.toolkit.get_action('resource_create')(context, resource)
                 log.debug('Added resource %s to package %s with uuid %s', resource['name'], package_id, created_resource['id'])
 
@@ -661,11 +682,16 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             #tag = tag[:50] if len(tag) > 50 else tag
             #tags.append({'name': tag})
 
+        # Infer groups
+
+        groups = self.handle_groups(harvest_object, georesource)
+
         package_dict = {
             'title': georesource.title(),
             'notes': georesource.abstract(),
             'tags': tags,
             'resources': [],
+            'groups': groups,
         }
 
         # We need to get the owner organization (if any) from the harvest
@@ -693,6 +719,9 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 #            'publication_place':
 #            'publication_date':
         }
+
+        for requested_field in self._get_config_value(CONFIG_IMPORT_FIELDS, []):
+            extras[requested_field] = georesource.get(requested_field)
 
         if georesource.date_type() == 'publication':
             extras['publication_date'] = georesource.date()
@@ -760,6 +789,33 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 extras['spatial'] = extent_string.strip()
 
         return package_dict, extras
+
+    def handle_groups(self, harvest_object, georesource):
+
+        validated_groups = []
+
+        if CONFIG_GROUP_MAPPING in self.source_config:
+            source_name = self.source_config[CONFIG_GROUP_MAPPING_FIELDNAME]
+            remote_value = georesource.get(source_name)
+            log.debug('Field "%s" contains value "%s"', source_name, remote_value)
+            if remote_value:
+                # remote resource has the mapping attribute
+                local_group = self.source_config[CONFIG_GROUP_MAPPING].get(str(remote_value))
+                log.debug('Remote value %s maps to group %s', remote_value, local_group)
+
+                if local_group:
+                    # remote attribute is mapped to a group
+                    log.info('Adding group %s ', local_group)
+
+                    try:
+                        context = {'model': model, 'session': Session, 'user': 'harvest'}
+                        data_dict = {'id': local_group}
+                        get_action('group_show')(context, data_dict)
+                        validated_groups.append({'name': local_group})
+                    except NotFound:
+                        log.warning('Group %s is not available', local_group)
+
+        return validated_groups
 
     def _post_package_create(self, package_id, harvest_object):
         pass
