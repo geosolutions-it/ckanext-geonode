@@ -1,8 +1,6 @@
 import logging
-
-import urllib2
-
 import tempfile
+from urllib.request import urlopen
 
 log = logging.getLogger(__name__)
 
@@ -33,8 +31,7 @@ def load_wfs_getfeatures(gsbaseurl, typename, outputfile=None, version=WFS_VERSI
     # TODO: loop to retrieve all the features
     # TODO: stream the output to the file
 
-    http_request = urllib2.Request(url)
-    http_response = urllib2.urlopen(http_request)
+    http_response = urlopen(url)
 
     content = http_response.read()
 

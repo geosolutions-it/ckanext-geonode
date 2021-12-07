@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 import logging
 import os
+import json
 
 log = logging.getLogger(__name__)
-
-from ckan.common import json
-
 
 class GeoNodeResource(object):
     """"
@@ -54,9 +52,10 @@ class GeoNodeResource(object):
 
     def owner(self):
         owner = self._dict['owner']
-        if owner['first_name'] and owner['last_name']:
+
+        if 'first_name' in owner and 'last_name' in owner:
             return "%s %s" % (owner['first_name'], owner['last_name'])
-        elif not owner['first_name'] and not owner['last_name']:
+        elif 'first_name' not in owner and 'last_name' not in owner:
             return '[%s]' % owner['username']
         else:
             return '%s [%s]' % (owner['first_name'] or owner['last_name'], owner['username'])

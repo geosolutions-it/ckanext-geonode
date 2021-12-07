@@ -6,11 +6,7 @@ from ckanext.geonode.harvesters.client import GeoNodeClient
 from cgi import FieldStorage
 import os
 import logging
-
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO
+from io import StringIO
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +29,7 @@ class MockFieldStorage(FieldStorage):
 
         FieldStorage.__init__(self, fp=StringIO(content) if content else datafile, environ=env)
         # FieldStorage is declared as an old-style class, so super() cannot be used
-        #super(MockFieldStorage, self).__init__(fp=StringIO(content))
+        # super(MockFieldStorage, self).__init__(fp=StringIO(content))
         self.filename = filename
 
 
