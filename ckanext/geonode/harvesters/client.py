@@ -35,6 +35,7 @@ class GeoNodeClient(object):
 
         log.info('Retrieving %s at GeoNode URL %s', resType, url)
         response = urlopen(url)
+        response = response.read()
 
         json_content = json.loads(response)
 
