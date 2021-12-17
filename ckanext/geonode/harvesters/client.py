@@ -14,7 +14,6 @@ RESTYPE_DOC = "documents"
 class GeoNodeClient(object):
 
     def __init__(self, baseurl):
-
         self.baseurl = baseurl
 
     def get_maps(self):
@@ -26,28 +25,24 @@ class GeoNodeClient(object):
     def get_documents(self):
         return self._get_resources(RESTYPE_DOC)
 
-    def _get_resources(self, resType):
+    def _get_resources(self, res_type):
         ''' return id,uuid,title '''
 
         # todo : transform into a generator using paged retrieving in API
+        url = '%s/api/%s/' % (self.baseurl, res_type)
 
-        url = '%s/api/%s/' % (self.baseurl, resType)
-
-        log.info('Retrieving %s at GeoNode URL %s', resType, url)
-        response = urlopen(url)
-        response = response.read()
-
+        log.debug('Retrieving %s at GeoNode URL %s', res_type, url)
+        response = urlopen(url).read()
         json_content = json.loads(response)
 
         objects = json_content['objects']
         ret = []
-        for layer in objects:
-            lid = layer['id']
-            luuid = layer['uuid']
-            ltitle = layer['title']
+        for res in objects:
+            lid = res['id']
+            luuid = res['uuid']
+            ltitle = res['title']
 
-            log.info('%s: found %s %s %s', resType, lid, luuid, ltitle)
-
+            log.info('%s: found id:%s uuid:%s "%s"', res_type, lid, luuid, ltitle)
             ret.append({'id': lid, 'uuid': luuid, 'title': ltitle})
 
         return ret
@@ -61,39 +56,27 @@ class GeoNodeClient(object):
     def get_doc_json(self, id):
         return self._get_resource_json(id, RESTYPE_DOC)
 
-    def _get_resource_json(self, id, resType):
+    def _get_resource_json(self, id, res_type):
         ''' return a resource (map or layer) '''
-
-        url = '%s/api/%s/%d/' % (self.baseurl, resType, id)
-
-        log.info('Connecting to GeoNode at %s', url)
-
+        log.debug(f'Retrieving {res_type} id:{id}')
+        url = f'{self.baseurl}/api/{res_type}/{id}/'
         response = urlopen(url)
-        content = response.read()
-
-        return content
+        return response.read()
 
     def get_map_data(self, id):
+        log.debug('Retrieve blob data for map #%d', id)
 
-        url = '%s/maps/%d/data' % (self.baseurl, id)
-
-        log.info('Retrieve blob data for map #%d', id)
-
+        url = f'{self.baseurl}/maps/{id}/data'
         response = urlopen(url)
-        content = json.load(response)
-
-        return content
+        return response.read()
 
     def get_document_download(self, id):
         """
         Download the full document from geonode.
         TODO: at the moment we're loading the doc in memory: it should be streamed to a file.
         """
+        log.debug('Retrieve blob data for document #%d', id)
 
-        url = '%s/documents/%d/download' % (self.baseurl, id)
-        log.info('Retrieve blob data for document #%d', id)
-
+        url = f'{self.baseurl}/documents/{id}/download'
         response = urlopen(url)
-        content = response.read()
-
-        return content
+        return response.read()

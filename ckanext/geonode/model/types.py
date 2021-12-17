@@ -5,19 +5,22 @@ import json
 
 log = logging.getLogger(__name__)
 
+
 class GeoNodeResource(object):
     """"
     Generic resource from GeoNode.
     Can be a Layer, a Map or a Document.
     """
+    def __init__(self, obj):
+        if isinstance(obj, str):
+            self._dict = json.loads(obj)
+        elif isinstance(obj, dict):
+            self._dict = obj
+        else:
+            raise TypeError(f"Can't handle {type(obj)}")
 
-    _dict = None
-
-    def __init__(self, json_string):
-        self._dict = json.loads(json_string)
-
-    def get(self, key):
-        return self._dict.get(key)
+    def get(self, key, default=None):
+        return self._dict.get(key, default)
 
     def is_spatial(self):
         return False
@@ -30,6 +33,12 @@ class GeoNodeResource(object):
 
     def abstract(self):
         return self._dict['abstract']
+
+    def alternate(self):
+        return self._dict['alternate']
+
+    def keywords(self):
+        return self._dict['keywords']
 
     def purpose(self):
         return self._dict['purpose']
@@ -50,6 +59,9 @@ class GeoNodeResource(object):
     def time_end(self):
         return self._dict['temporal_extent_end']
 
+    def thumbnail(self):
+        return self._dict['thumbnail_url']
+
     def owner(self):
         owner = self._dict['owner']
 
@@ -63,6 +75,12 @@ class GeoNodeResource(object):
     def owner_email(self):
         owner = self._dict['owner']
         return owner['email'] or None
+
+    def links_raw(self):
+        return self._dict['links'] if 'links' in self._dict else []
+
+    def links(self):
+        return [GeoNodeResourceLink(link) for link in self.links_raw()]
 
 
 class GeoResource(GeoNodeResource):
@@ -147,3 +165,36 @@ class Doc(GeoNodeResource):
 
     def extension(self):
         return self._dict['extension']
+
+
+class GeoNodeResourceLink(object):
+    # {
+    #   "extension": "xml",
+    #   "link_type": "metadata",
+    #   "mime": "text/xml",
+    #   "name": "Atom",
+    #   "url": the URL :)
+    # },
+
+    def __init__(self, obj):
+        if isinstance(obj, str):
+            self._dict = json.loads(obj)
+        elif isinstance(obj, dict):
+            self._dict = obj
+        else:
+            raise TypeError(f"Can't handle {type(obj)}")
+
+    def extension(self):
+        return self._dict['extension']
+
+    def link_type(self):
+        return self._dict['link_type']
+
+    def mime(self):
+        return self._dict['mime']
+
+    def name(self):
+        return self._dict['name']
+
+    def url(self):
+        return self._dict['url']

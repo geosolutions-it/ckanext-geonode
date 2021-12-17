@@ -27,6 +27,6 @@ setup(
         [ckan.plugins]
         # Add plugins here, eg
         # myplugin=ckanext.geonode:PluginClass
-        geonode_harvester=ckanext.geonode.harvesters:GeoNodeHarvester
+        geonode_harvester=ckanext.geonode.harvesters.geonode:GeoNodeHarvester
             """,
 )
