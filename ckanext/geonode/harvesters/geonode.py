@@ -1,3 +1,6 @@
+import json
+
+import shapely as shapely
 
 from .client import GeoNodeClient
 from .upload import GeonodeDataDownloader, WFSCSVDownloader
@@ -12,7 +15,6 @@ import uuid
 from tempfile import SpooledTemporaryFile
 
 from string import Template
-from pylons import config
 from datetime import datetime
 
 from ckan import logic
@@ -20,7 +22,6 @@ from ckan import model
 from ckan import plugins as p
 from ckan.model import Session
 
-from ckan.common import json
 from ckan.lib.navl.validators import not_empty
 
 from ckan.plugins.core import SingletonPlugin, implements
@@ -31,8 +32,8 @@ from ckanext.harvest.harvesters.base import HarvesterBase
 from ckanext.harvest.model import HarvestObject
 from ckanext.harvest.model import HarvestObjectExtra as HOExtra
 
-
 log = logging.getLogger(__name__)
+config = p.toolkit.config
 
 GEONODE_TYPE = 'GEONODE_TYPE__'
 GEONODE_LAYER_TYPE = 'LAYER'
@@ -51,10 +52,9 @@ CONFIG_IMPORT_FIELDS = 'import_fields'
 
 
 class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
-    '''
-    A Harvester for GeoNode's layers, map, docs.
-    '''
-
+    """
+        A Harvester for GeoNode's layers, map, docs.
+    """
     implements(IHarvester)
 
     _user_name = None
@@ -89,7 +89,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             if not CONFIG_GEOSERVERURL in source_config_obj:
                 raise ValueError('geoserver_url is mandatory')
 
-            if not isinstance(source_config_obj[CONFIG_GEOSERVERURL], basestring):
+            if not isinstance(source_config_obj[CONFIG_GEOSERVERURL], str):
                 raise ValueError('geoserver_url should be a string')
 
             if 'import_wfs_as_csv' in source_config_obj:
@@ -105,7 +105,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                     raise ValueError('%s should be a list', CONFIG_IMPORT_FIELDS)
 
             self.checkMapping(CONFIG_KEYWORD_MAPPING, source_config_obj, list)
-            self.checkMapping(CONFIG_GROUP_MAPPING, source_config_obj, basestring)
+            self.checkMapping(CONFIG_GROUP_MAPPING, source_config_obj, str)
 
             if CONFIG_GROUP_MAPPING in source_config_obj and CONFIG_GROUP_MAPPING_FIELDNAME not in source_config_obj:
                 raise ValueError('%s needs also %s to be defined', CONFIG_GROUP_MAPPING, CONFIG_GROUP_MAPPING_FIELDNAME)
@@ -121,8 +121,8 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             mapping = source_config_obj[key]
             if not isinstance(mapping, dict):
                 raise ValueError('%s should be a dict' % key)
-            for k, v in mapping.iteritems():
-                if not isinstance(k, basestring):
+            for k, v in mapping.items():
+                if not isinstance(k, str):
                     raise ValueError('%s keys should be strings' % key)
                 if not isinstance(v, datatype):
                     raise ValueError('%s values should be %r' % (key, datatype))
@@ -150,7 +150,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                     'uuid': layer['uuid'],
                     'title': layer['title'],
                     'type': GEONODE_LAYER_TYPE,
-                    }
+                }
                 harvested[layer['uuid']] = db_object
 
             for map in client.get_maps():
@@ -160,7 +160,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                     'uuid': map['uuid'],
                     'title': map['title'],
                     'type': GEONODE_MAP_TYPE,
-                    }
+                }
                 harvested[map['uuid']] = db_object
 
             for doc in client.get_documents():
@@ -170,16 +170,16 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                     'uuid': doc['uuid'],
                     'title': doc['title'],
                     'type': GEONODE_DOC_TYPE,
-                    }
+                }
                 harvested[doc['uuid']] = db_object
 
         except Exception as e:
             self._save_gather_error('Error harvesting GeoNode: %s' % e, harvest_job)
             return None
 
-        query = model.Session.query(HarvestObject.guid, HarvestObject.package_id).\
-                                    filter(HarvestObject.current == True).\
-                                    filter(HarvestObject.harvest_source_id == harvest_job.source.id)
+        query = model.Session.query(HarvestObject.guid, HarvestObject.package_id). \
+            filter(HarvestObject.current == True). \
+            filter(HarvestObject.harvest_source_id == harvest_job.source.id)
         guid_to_package_id = {}
 
         for guid, package_id in query:
@@ -187,13 +187,13 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
         guids_in_db = set(guid_to_package_id.keys())
 
-        #log.debug('Starting gathering for %s' % url)
+        # log.debug('Starting gathering for %s' % url)
         guids_in_harvest = set(harvested.keys())
 
-        #for doc in chobj.docs:
-            #doc_id = doc.get_id()
-            #log.info("Got id from ClearingHouse %s", doc_id)
-            #guids_in_harvest.add(doc_id)
+        # for doc in chobj.docs:
+        # doc_id = doc.get_id()
+        # log.info("Got id from ClearingHouse %s", doc_id)
+        # guids_in_harvest.add(doc_id)
 
         new = guids_in_harvest - guids_in_db
         delete = guids_in_db - guids_in_harvest
@@ -218,9 +218,9 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                                 package_id=guid_to_package_id[guid],
                                 extras=[HOExtra(key='status', value='delete')])
             ids.append(obj.id)
-            model.Session.query(HarvestObject).\
-                  filter_by(guid=guid).\
-                  update({'current': False}, False)
+            model.Session.query(HarvestObject). \
+                filter_by(guid=guid). \
+                update({'current': False}, False)
             obj.save()
 
         if len(ids) == 0:
@@ -255,7 +255,8 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 # it means it already contains data read in this fetch stage. We were expecting info from the gather stage instead
                 log.warning("Harvest object is in the wrong state ID: %d GUID: %s" % (gnid, guid))
 
-            self._save_object_error("Bad content in harvest object ID: %d GUID: %s [%s]" % (gnid, guid, content), harvest_object)
+            self._save_object_error("Bad content in harvest object ID: %d GUID: %s [%s]" % (gnid, guid, content),
+                                    harvest_object)
             return False
 
         objtype = obj['type']
@@ -280,7 +281,8 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
             else:
                 log.error("Unknown GeoNode resource type %s for ID: %d GUID: %s " % (objtype, gnid, guid))
-                self._save_object_error("Unknown GeoNode resource type %s for ID: %d GUID: %s " % (objtype, gnid, guid), harvest_object)
+                self._save_object_error("Unknown GeoNode resource type %s for ID: %d GUID: %s " % (objtype, gnid, guid),
+                                        harvest_object)
                 return False
 
             objdict[GEONODE_TYPE] = objtype
@@ -288,7 +290,8 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
         except Exception as e:
             log.error('Error getting GeoNode %s ID %d GUID %s [%r]' % (objtype, gnid, guid, e), e)
-            self._save_object_error('Error getting GeoNode %s ID %d GUID %s [%r]' % (objtype, gnid, guid, e), harvest_object)
+            self._save_object_error('Error getting GeoNode %s ID %d GUID %s [%r]' % (objtype, gnid, guid, e),
+                                    harvest_object)
             return False
 
         if final_json is None:
@@ -321,9 +324,9 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
         # Get the last harvested object (if any)
         previous_object = Session.query(HarvestObject) \
-                          .filter(HarvestObject.guid == harvest_object.guid) \
-                          .filter(HarvestObject.current == True) \
-                          .first()
+            .filter(HarvestObject.guid == harvest_object.guid) \
+            .filter(HarvestObject.current == True) \
+            .first()
 
         if status == 'delete':
             # Delete package
@@ -354,7 +357,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         # Error if GUID not present
         if not harvest_object.guid:
             self._save_object_error('Missing GUID for object {0}'
-                        .format(harvest_object.id), harvest_object, 'Import')
+                                    .format(harvest_object.id), harvest_object, 'Import')
             return False
 
         log.error('Object GUID:%s is modified: %s' % (harvest_object.guid, is_modified))
@@ -384,7 +387,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
         # The default package schema does not like Upper case tags
         tag_schema = logic.schema.default_tags_schema()
-        tag_schema['name'] = [not_empty, unicode]
+        tag_schema['name'] = [not_empty, str]
 
         # Flag this object as the current one
         harvest_object.current = True
@@ -397,8 +400,8 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
             # We need to explicitly provide a package ID, otherwise ckanext-spatial
             # won't be be able to link the extent to the package.
-            package_dict['id'] = unicode(uuid.uuid4())
-            package_schema['id'] = [unicode]
+            package_dict['id'] = str(uuid.uuid4())
+            package_schema['id'] = [str]
 
             # Save reference to the package on the object
             harvest_object.package_id = package_dict['id']
@@ -442,7 +445,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
                 package_dict['id'] = harvest_object.package_id
                 try:
-                    #package_id = p.toolkit.get_action('package_update')(context, package_dict)
+                    # package_id = p.toolkit.get_action('package_update')(context, package_dict)
                     package_id = self._update_package(context, package_dict, harvest_object)
                     log.info('Updated package %s with guid %s', package_id, harvest_object.guid)
                     self._post_package_update(package_id, harvest_object)
@@ -480,10 +483,12 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
             with SpooledTemporaryFile(max_size=TEMP_FILE_THRESHOLD_SIZE) as f:
                 fieldStorage = downloader.download(f)
+
                 resource['upload'] = fieldStorage
                 log.info('Create resource %s in package %s', resource['name'], package_id)
                 created_resource = p.toolkit.get_action('resource_create')(context, resource)
-                log.debug('Added resource %s to package %s with uuid %s', resource['name'], package_id, created_resource['id'])
+                log.debug('Added resource %s to package %s with uuid %s', resource['name'], package_id,
+                          created_resource['id'])
 
         return package_id
 
@@ -526,7 +531,8 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 resource['upload'] = fieldStorage
                 log.info('Create resource %s in package %s', resource['name'], package_id)
                 created_resource = p.toolkit.get_action('resource_create')(context, resource)
-                log.debug('Added resource %s to package %s with uuid %s', resource['name'], package_id, created_resource['id'])
+                log.debug('Added resource %s to package %s with uuid %s', resource['name'], package_id,
+                          created_resource['id'])
 
         return package_id
 
@@ -678,9 +684,9 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         '''
 
         tags = []
-        #for tag in doc.get_keywords():
-            #tag = tag[:50] if len(tag) > 50 else tag
-            #tags.append({'name': tag})
+        # for tag in doc.get_keywords():
+        # tag = tag[:50] if len(tag) > 50 else tag
+        # tags.append({'name': tag})
 
         # Infer groups
 
@@ -707,17 +713,18 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             if not name:
                 name = self._gen_new_name(georesource.name())
             if not name:
-                raise Exception('Could not generate a unique name from the title or the resource name. Please choose a more unique title.')
+                raise Exception(
+                    'Could not generate a unique name from the title or the resource name. Please choose a more unique title.')
             package_dict['name'] = name
         else:
             package_dict['name'] = package.name
 
         extras = {
             'guid': harvest_object.guid,
-            'author': georesource.owner(),
-#            'publisher':
-#            'publication_place':
-#            'publication_date':
+            'author_geonode': georesource.owner(),
+            #            'publisher':
+            #            'publication_place':
+            #            'publication_date':
         }
 
         for requested_field in self._get_config_value(CONFIG_IMPORT_FIELDS, []):
@@ -732,41 +739,51 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 extras['spatial-reference-system'] = georesource.srid()
 
             ## Some of the extras we may want to add in the future:
-                ## Essentials
-                #'spatial-reference-system',
-                #'guid',
-                ## Usefuls
-                #'dataset-reference-date',
-                #'metadata-language',  # Language
-                #'metadata-date',  # Released
-                #'coupled-resource',
-                #'contact-email',
-                #'frequency-of-update',
-                #'spatial-data-service-type',
-                #extras['progress'] = ''
-                #extras['resource-type'] = ''
-                #extras['licence']
-                #extras['access_constraints']
-                #extras['graphic-preview-file']
-                #extras['graphic-preview-description']
-                #extras['graphic-preview-type']
-                #extras['responsible-party'] = [{'name': k, 'roles': v} for k, v in parties.iteritems()]
+            ## Essentials
+            # 'spatial-reference-system',
+            # 'guid',
+            ## Usefuls
+            # 'dataset-reference-date',
+            # 'metadata-language',  # Language
+            # 'metadata-date',  # Released
+            # 'coupled-resource',
+            # 'contact-email',
+            # 'frequency-of-update',
+            # 'spatial-data-service-type',
+            # extras['progress'] = ''
+            # extras['resource-type'] = ''
+            # extras['licence']
+            # extras['access_constraints']
+            # extras['graphic-preview-file']
+            # extras['graphic-preview-description']
+            # extras['graphic-preview-type']
+            # extras['responsible-party'] = [{'name': k, 'roles': v} for k, v in parties.items()]
 
             if georesource.thumbnail():
                 extras['graphic-preview-file'] = georesource.thumbnail()
 
-            # Set up bounding box
-
-            extras['bbox-east-long'] = georesource.x1()
-            extras['bbox-north-lat'] = georesource.y1()
-            extras['bbox-south-lat'] = georesource.y0()
-            extras['bbox-west-long'] = georesource.x0()
+            shape_str = georesource._dict['bbox_polygon'].split(';')
+            if len(shape_str) > 1:
+                shape_str = ';'.join(shape_str[1:])
+            else:
+                shape_str = shape_str[-1]
 
             try:
-                xmin = float(georesource.x0())
-                xmax = float(georesource.x1())
-                ymin = float(georesource.y0())
-                ymax = float(georesource.y1())
+                x_min, y_min, x_max, y_max = shapely.wkt.loads(shape_str).bounds
+            except shapely.errors.WKTReadingError:
+                log.error("Invalid Shape")
+                x_min, y_min, x_max, y_max = 0, 0, 0, 0
+
+            extras['bbox-east-long'] = x_max
+            extras['bbox-north-lat'] = y_max
+            extras['bbox-south-lat'] = y_min
+            extras['bbox-west-long'] = x_min
+
+            try:
+                xmin = float(x_min)
+                xmax = float(x_max)
+                ymin = float(y_min)
+                ymax = float(y_max)
             except ValueError as e:
                 self._save_object_error('Error parsing bounding box value: {0}'.format(str(e)),
                                         harvest_object, 'Import')
@@ -780,7 +797,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                         x=xmin, y=ymin
                     )
                     self._save_object_error('Point extent defined instead of polygon',
-                                     harvest_object, 'Import')
+                                            harvest_object, 'Import')
                 else:
                     extent_string = self.extent_template.substitute(
                         xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax
@@ -826,7 +843,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
     def _addExtras(self, package_dict, extras):
 
         extras_as_dict = []
-        for key, value in extras.iteritems():
+        for key, value in extras.items():
             if isinstance(value, (list, dict)):
                 extras_as_dict.append({'key': key, 'value': json.dumps(value)})
             else:
