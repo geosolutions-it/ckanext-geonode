@@ -4,11 +4,9 @@ import logging
 
 from urllib.request import urlopen
 
-log = logging.getLogger(__name__)
+from ckanext.geonode.harvesters import GeoNodeType
 
-RESTYPE_LAYER = "layers"
-RESTYPE_MAP = "maps"
-RESTYPE_DOC = "documents"
+log = logging.getLogger(__name__)
 
 
 class GeoNodeClient(object):
@@ -17,58 +15,60 @@ class GeoNodeClient(object):
         self.baseurl = baseurl
 
     def get_maps(self):
-        return self._get_resources(RESTYPE_MAP)
+        return self.get_resources(GeoNodeType.MAP_TYPE)
 
     def get_layers(self):
-        return self._get_resources(RESTYPE_LAYER)
+        return self.get_resources(GeoNodeType.LAYER_TYPE)
 
     def get_documents(self):
-        return self._get_resources(RESTYPE_DOC)
+        return self.get_resources(GeoNodeType.DOC_TYPE)
 
-    def _get_resources(self, res_type):
-        ''' return id,uuid,title '''
+    def get_resources(self, res_type: GeoNodeType):
+        ''' return geonode resource json '''
 
-        # todo : transform into a generator using paged retrieving in API
-        url = '%s/api/%s/' % (self.baseurl, res_type)
+        url = f'{self.baseurl}/api/v2/{res_type.api_path}/'
 
-        log.debug('Retrieving %s at GeoNode URL %s', res_type, url)
-        response = urlopen(url).read()
-        json_content = json.loads(response)
+        while True:
+            log.debug('Retrieving %s at GeoNode URL %s', res_type.config_name, url)
+            response = urlopen(url).read()
+            json_content = json.loads(response)
 
-        objects = json_content['objects']
-        ret = []
-        for res in objects:
-            lid = res['id']
-            luuid = res['uuid']
-            ltitle = res['title']
+            url = json_content['links']['next']
 
-            log.info('%s: found id:%s uuid:%s "%s"', res_type, lid, luuid, ltitle)
-            ret.append({'id': lid, 'uuid': luuid, 'title': ltitle})
+            objects = json_content[res_type.json_resource_list]
+            for res in objects:
+                lid = res['pk']
+                luuid = res['uuid']
+                ltitle = res['title']
+                log.info(f'Found {res_type.json_resource_type} {luuid} id:{lid} "{ltitle}"')
+                yield res
 
-        return ret
+            if url is None:
+                break
 
-    def get_layer_json(self, id):
-        return self._get_resource_json(id, RESTYPE_LAYER)
 
-    def get_map_json(self, id):
-        return self._get_resource_json(id, RESTYPE_MAP)
-
-    def get_doc_json(self, id):
-        return self._get_resource_json(id, RESTYPE_DOC)
-
-    def _get_resource_json(self, id, res_type):
-        ''' return a resource (map or layer) '''
-        log.debug(f'Retrieving {res_type} id:{id}')
-        url = f'{self.baseurl}/api/{res_type}/{id}/'
-        response = urlopen(url)
-        return response.read()
-
-    def get_map_data(self, id):
-        log.debug('Retrieve blob data for map #%d', id)
-
-        url = f'{self.baseurl}/maps/{id}/data'
-        response = urlopen(url)
-        return response.read()
+    # def get_layer_json(self, id):
+    #     return self._get_resource_json(id, RESTYPE_LAYER)
+    #
+    # def get_map_json(self, id):
+    #     return self._get_resource_json(id, RESTYPE_MAP)
+    #
+    # def get_doc_json(self, id):
+    #     return self._get_resource_json(id, RESTYPE_DOC)
+    #
+    # def _get_resource_json(self, id, res_type):
+    #     ''' return a resource (map or layer) '''
+    #     log.debug(f'Retrieving {res_type} id:{id}')
+    #     url = f'{self.baseurl}/api/{res_type}/{id}/'
+    #     response = urlopen(url)
+    #     return response.read()
+    #
+    # def get_map_data(self, id):
+    #     log.debug('Retrieve blob data for map #%d', id)
+    #
+    #     url = f'{self.baseurl}/maps/{id}/data'
+    #     response = urlopen(url)
+    #     return response.read()
 
     def get_document_download(self, id):
         """
