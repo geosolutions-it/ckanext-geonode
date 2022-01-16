@@ -26,7 +26,7 @@ class GeoNodeResource(object):
         return False
 
     def id(self):
-        return self._dict['id']
+        return self._dict['pk']
 
     def title(self):
         return self._dict['title']

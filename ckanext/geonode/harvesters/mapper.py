@@ -17,11 +17,10 @@ from ckanext.geonode.harvesters import (
     CONFIG_GROUP_MAPPING_FIELDNAME,
     CONFIG_IMPORT_FIELDS,
 
-    GEONODE_TYPE,
-    GEONODE_MAP_TYPE,
-    GEONODE_LAYER_TYPE,
-    GEONODE_DOC_TYPE,
+    GEONODE_JSON_TYPE,
+    GeoNodeType,
 )
+from ckanext.geonode.harvesters.utils import format_date
 from ckanext.geonode.model.types import Layer, Map, Doc, GeoNodeResource
 
 
@@ -34,16 +33,16 @@ extent_template = Template('''
 
 def map_resource(harvest_object, config):
     json_dict = json.loads(harvest_object.content)
-    doc_type = json_dict[GEONODE_TYPE]
+    res_type = json_dict[GEONODE_JSON_TYPE]
 
-    if doc_type == GEONODE_LAYER_TYPE:
+    if res_type == GeoNodeType.LAYER_TYPE.json_resource_type:
         return get_layer_package_dict(harvest_object, harvest_object.content, config)
-    elif doc_type == GEONODE_MAP_TYPE:
+    elif res_type == GeoNodeType.MAP_TYPE.json_resource_type:
         return get_map_package_dict(harvest_object, harvest_object.content, config)
-    elif doc_type == GEONODE_DOC_TYPE:
+    elif res_type == GeoNodeType.DOC_TYPE.json_resource_type:
         return get_doc_package_dict(harvest_object, harvest_object.content, config)
     else:
-        log.error('Unknown GeoNode type %s' % doc_type)
+        log.error('Unknown GeoNode type %s' % res_type)
         return None, None
 
 
@@ -192,7 +191,7 @@ def get_resource_package_dict(harvest_object, georesource: GeoNodeResource, conf
     groups = handle_groups(harvest_object, georesource, config)
 
     resources = []
-    pos = 0;
+    pos = 0
 
     for link in georesource.links():
         pos = pos + 1
@@ -214,7 +213,7 @@ def get_resource_package_dict(harvest_object, georesource: GeoNodeResource, conf
     package_dict = {
         'title': georesource.title(),
         'notes': georesource.abstract(),
-        'tags': tags,
+        'tags': [{'name': k['name']} for k in georesource.keywords()],
         'resources': resources,
         'groups': groups,
     }
@@ -239,6 +238,10 @@ def get_resource_package_dict(harvest_object, georesource: GeoNodeResource, conf
     else:
         package_dict['name'] = package.name
 
+    # Frequency TODO
+    package_dict['frequency'] = "UNKNOWN"
+
+
     extras = {
         'guid': harvest_object.guid,
         'geonode_uuid': georesource.get('uuid'),
@@ -254,7 +257,7 @@ def get_resource_package_dict(harvest_object, georesource: GeoNodeResource, conf
         extras[requested_field] = georesource.get(requested_field)
 
     if georesource.date_type() == 'publication':
-        extras['publication_date'] = georesource.date()
+        extras['publication_date'] = format_date(georesource.date())
 
     if georesource.is_spatial():
 
@@ -285,52 +288,142 @@ def get_resource_package_dict(harvest_object, georesource: GeoNodeResource, conf
         if georesource.thumbnail():
             extras['graphic-preview-file'] = georesource.thumbnail()
 
-        shape_str = georesource._dict['bbox_polygon'].split(';')
-        if len(shape_str) > 1:
-            shape_str = ';'.join(shape_str[1:])
-        else:
-            shape_str = shape_str[-1]
+        x0 = x1 = y0 = y1 = None
 
-        try:
-            x_min, y_min, x_max, y_max = wkt.loads(shape_str).bounds
-        except shapely.errors.WKTReadingError:
-            log.error(f"Invalid Shape --> {shape_str}")
-            x_min, y_min, x_max, y_max = 0, 0, 0, 0
+        if 'll_box_polygon' in georesource._dict:
+            bbox = georesource._dict['ll_box_polygon']['coordinates']
+            for point in bbox:
+                x0 = point[0] if x0 is None or x0 > point[0] else x0
+                x1 = point[0] if x1 is None or x1 < point[0] else x1
+                y0 = point[1] if y0 is None or y0 > point[1] else y0
+                y1 = point[1] if y1 is None or y1 < point[1] else y1
 
-        extras['bbox-east-long'] = x_max
-        extras['bbox-north-lat'] = y_max
-        extras['bbox-south-lat'] = y_min
-        extras['bbox-west-long'] = x_min
+            extras['bbox-east-long'] = x1
+            extras['bbox-north-lat'] = y1
+            extras['bbox-south-lat'] = y0
+            extras['bbox-west-long'] = x0
 
-        try:
-            xmin = float(x_min)
-            xmax = float(x_max)
-            ymin = float(y_min)
-            ymax = float(y_max)
-        except ValueError as e:
-            log.warning(f'Error parsing bounding box value: x0:{x_min} x1:{x_max} y0:{y_min} y1:{y_max} -- {e}')
-            # self._save_object_error('Error parsing bounding box value: {0}'.format(str(e)),
-            #                         harvest_object, 'Import')
-        else:
             # Construct a GeoJSON extent so ckanext-spatial can register the extent geometry
 
             # Some publishers define the same two corners for the bbox (ie a point),
             # that causes problems in the search if stored as polygon
-            if xmin == xmax or ymin == ymax:
+            if x0 == x1 or y0 == y1:
                 log.warning(f'Point extent defined instead of polygon`')
                 extent_string = Template('{"type": "Point", "coordinates": [$x, $y]}').substitute(
-                    x=xmin, y=ymin
+                    x=x0, y=y0
                 )
-                # self._save_object_error('Point extent defined instead of polygon',
-                #                         harvest_object, 'Import')
             else:
-                extent_string = extent_template.substitute(
-                    xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax
-                )
+                extent_string = extent_template.substitute(xmin=x0, ymin=y0, xmax=x1, ymax=y1)
 
             extras['spatial'] = extent_string.strip()
 
+    package_dict, extras = parse_dcatapit_info(georesource, package_dict, extras)
+
     return package_dict, extras
+
+
+def parse_dcatapit_info(georesource, package_dict, extras):
+    ## Some of the extras we may want to add in the future:
+    ## Essentials
+    # 'spatial-reference-system',
+    # 'guid',
+    ## Usefuls
+    # 'dataset-reference-date',
+    # 'metadata-language',  # Language
+    # 'metadata-date',  # Released
+    # 'coupled-resource',
+    # 'contact-email',
+    # 'frequency-of-update',
+    # 'spatial-data-service-type',
+    # extras['progress'] = ''
+    # extras['resource-type'] = ''
+    # extras['licence']
+    # extras['access_constraints']
+    # extras['graphic-preview-file']
+    # extras['graphic-preview-description']
+    # extras['graphic-preview-type']
+    # extras['responsible-party'] = [{'name': k, 'roles': v} for k, v in parties.items()]
+
+    # dcatapit defines these fields:
+        # identifier [1]                      OK
+        # alternate_identifier [0..N]
+        # themes_aggregate [1..N]
+        # publisher_name
+        # publisher_identifier
+        # issued  (release date) [0..1]       OK
+        # modified ('Modification Date'), [1] OK
+        # geographical_name
+        # geographical_geonames_url
+        # language [0..N]
+        # temporal_coverage [0..N]            OK
+        # - temporal_start                    OK
+        # - temporal_end                      OK
+        # holder_name
+        # holder_identifier
+        # frequency [1]                       OK
+        # is_version_of
+        # conforms_to
+        # creator_name
+        # creator_identifier
+
+    # identifier [1]
+    extras['identifier'] = georesource.get('uuid')
+
+    # alternate_identifier [0..N]
+    # TODO: check for DOI
+
+    # themes_aggregate [1..N]
+
+
+
+    # geonode "created": "2022-01-14T09:16:58.850532Z",
+    # geonode "last_updated": "2022-01-14T09:16:59.993468Z",
+    # "date": "2022-01-14T09:16:58.789761Z",
+    # "date_type": "publication",
+    if georesource.date_type() == 'publication':
+        extras['issued'] = format_date(georesource.date())
+
+    extras['modified'] = format_date(georesource.get('last_updated'))
+
+    # language [0..N]
+    # TODO map it
+    extras['language'] = format_date(georesource.get('language'))
+
+    ## temporal
+    # geonode: "temporal_extent_start": null,
+    # geonode: "temporal_extent_end": null,
+    # dcatapit: list of {'temporal_start': start, 'temporal_end': end}
+    temporal_start = georesource.get('temporal_extent_start')
+    temporal_end = georesource.get('temporal_extent_end')
+    if temporal_start or temporal_end:
+        interval = {
+            'temporal_start': format_date(temporal_start) if temporal_start else None,
+            'temporal_end': format_date(temporal_end) if temporal_end else None,
+        }
+        extras['temporal_coverage'] = json.dumps([interval])
+
+    # frequency [1]
+    freq = georesource.get('maintenance_frequency')
+    extras['frequency'] = GEONODE_TO_DCAT_FREQ.get(freq, 'OP_DATPRO')
+
+    return package_dict, extras
+
+
+GEONODE_TO_DCAT_FREQ = {
+    None: 'OP_DATPRO',
+    'unknown': 'UNKNOWN',
+    'continual': 'UPDATE_CONT',
+    'notPlanned': 'NEVER',
+    'asNeeded': 'OTHER',
+    'irregular': 'IRREG',
+    'daily': 'DAILY',
+    'annually': 'ANNUAL',
+    'monthly': 'MONTHLY',
+    'fortnightly': 'WEEKLY_2',
+    'weekly': 'WEEKLY',
+    'biannually': 'ANNUAL_2',
+    'quarterly': 'ANNUAL_3',
+}
 
 
 def handle_groups(harvest_object, georesource, config):

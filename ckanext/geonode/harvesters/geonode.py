@@ -25,8 +25,9 @@ from ckanext.geonode.harvesters.mapper import map_resource
 from ckanext.geonode.harvesters.upload import GeonodeDataDownloader, WFSCSVDownloader
 from ckanext.geonode.harvesters import (
     CONFIG_GEOSERVERURL, CONFIG_IMPORT_FIELDS, CONFIG_KEYWORD_MAPPING, CONFIG_GROUP_MAPPING,
-    CONFIG_GROUP_MAPPING_FIELDNAME, GEONODE_MAP_TYPE, GEONODE_LAYER_TYPE, GEONODE_DOC_TYPE, GEONODE_TYPE,
-    RESOURCE_DOWNLOADER, TEMP_FILE_THRESHOLD_SIZE,
+    CONFIG_GROUP_MAPPING_FIELDNAME, GeoNodeType,
+    RESOURCE_DOWNLOADER, TEMP_FILE_THRESHOLD_SIZE, CONFIG_IMPORT_TYPES,
+
 )
 from ckanext.geonode.model.types import Layer, Map, Doc, GeoNodeResourceLink, GeoNodeResource
 
@@ -67,11 +68,11 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             source_config_obj = json.loads(source_config)
 
             # GeoNode does not expose the internal GeoServer URL, so we have to config it on its own
-            if not CONFIG_GEOSERVERURL in source_config_obj:
-                raise ValueError('geoserver_url is mandatory')
-
-            if not isinstance(source_config_obj[CONFIG_GEOSERVERURL], str):
-                raise ValueError('geoserver_url should be a string')
+            # if not CONFIG_GEOSERVERURL in source_config_obj:
+            #     raise ValueError('geoserver_url is mandatory')
+            #
+            # if not isinstance(source_config_obj[CONFIG_GEOSERVERURL], str):
+            #     raise ValueError('geoserver_url should be a string')
 
             if 'import_wfs_as_csv' in source_config_obj:
                 if not source_config_obj['import_wfs_as_csv'] in ['true', 'false']:
@@ -85,8 +86,10 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 if not isinstance(source_config_obj[CONFIG_IMPORT_FIELDS], list):
                     raise ValueError('%s should be a list', CONFIG_IMPORT_FIELDS)
 
-            self.checkMapping(CONFIG_KEYWORD_MAPPING, source_config_obj, list)
-            self.checkMapping(CONFIG_GROUP_MAPPING, source_config_obj, str)
+            self.check_mapping(CONFIG_KEYWORD_MAPPING, source_config_obj, list)
+            self.check_mapping(CONFIG_GROUP_MAPPING, source_config_obj, str)
+            self.check_mapping(CONFIG_IMPORT_TYPES, source_config_obj, bool,
+                               lambda x: x in (GeoNodeType.get_config_names()))
 
             if CONFIG_GROUP_MAPPING in source_config_obj and CONFIG_GROUP_MAPPING_FIELDNAME not in source_config_obj:
                 raise ValueError('%s needs also %s to be defined', CONFIG_GROUP_MAPPING, CONFIG_GROUP_MAPPING_FIELDNAME)
@@ -95,17 +98,23 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             log.warning("Config parsing error: %r", e)
             raise e
 
-        return source_config
+        return json.dumps(source_config_obj)
 
-    def checkMapping(self, key, source_config_obj, datatype):
+    def check_mapping(self, key, source_config_obj, datatype, key_validator=None):
         if key in source_config_obj:
             mapping = source_config_obj[key]
             if not isinstance(mapping, dict):
                 raise ValueError('%s should be a dict' % key)
             for k, v in mapping.items():
-                if not isinstance(k, str):
-                    raise ValueError('%s keys should be strings' % key)
-                if not isinstance(v, datatype):
+                if key_validator:
+                    if not key_validator(k):
+                        raise ValueError('"{key}" key is not valid for config "{configkey}"'
+                                         .format(configkey=key, key=k))
+                else:
+                    # no custom validator, we only need it's a string
+                    if not isinstance(k, str):
+                        raise ValueError('%s keys should be strings' % key)
+                if type(v) != datatype:
                     raise ValueError('%s values should be %r' % (key, datatype))
 
     def gather_stage(self, harvest_job):
@@ -119,175 +128,82 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         try:
             log.info('Connecting to GeoNode at %s', url)
 
+            query = model.Session.query(HarvestObject.guid, HarvestObject.package_id). \
+                filter(HarvestObject.current == True). \
+                filter(HarvestObject.harvest_source_id == harvest_job.source.id)
+
+            guid_to_package_id = {}
+            for guid, package_id in query:
+                guid_to_package_id[guid] = package_id
+
+            guids_in_db = list(guid_to_package_id.keys())
+
+            ho_ids = []
+
             client = GeoNodeClient(url)
 
             # dict guid: layer
-            harvested = {}
+            harvested = []
 
-            for layer in client.get_layers():
-                log.debug('Found layer %s %s (%s)' % (layer['id'], layer['uuid'], layer['title']))
-                db_object = {
-                    'id': layer['id'],
-                    'uuid': layer['uuid'],
-                    'title': layer['title'],
-                    'type': GEONODE_LAYER_TYPE,
-                }
-                harvested[layer['uuid']] = db_object
+            cnt_upd = 0
+            cnt_add = 0
 
-            for map in client.get_maps():
-                log.debug('Found map %s %s (%s)' % (map['id'], map['uuid'], map['title']))
-                db_object = {
-                    'id': map['id'],
-                    'uuid': map['uuid'],
-                    'title': map['title'],
-                    'type': GEONODE_MAP_TYPE,
-                }
-                harvested[map['uuid']] = db_object
+            for geonode_type in GeoNodeType:
 
-            for doc in client.get_documents():
-                log.debug('Found doc %s %s (%s)' % (doc['id'], doc['uuid'], doc['title']))
-                db_object = {
-                    'id': doc['id'],
-                    'uuid': doc['uuid'],
-                    'title': doc['title'],
-                    'type': GEONODE_DOC_TYPE,
-                }
-                harvested[doc['uuid']] = db_object
+                if CONFIG_IMPORT_TYPES in self.source_config:
+                    # if import config is there, only import defined types
+                    import_types = self.source_config[CONFIG_IMPORT_TYPES]
+                    if not import_types.get(geonode_type.config_name, False):
+                        log.info(f'Skipping resource type: {geonode_type}')
+                        continue
+
+                for obj in client.get_resources(geonode_type):
+                    uuid = obj['uuid']
+                    doc = json.dumps(obj)
+                    if uuid in guids_in_db:
+                        ho = HarvestObject(guid=uuid, job=harvest_job, content=doc,
+                                           package_id=guid_to_package_id[uuid],
+                                           extras=[HOExtra(key='status', value='change')])
+                        action = 'UPDATE'
+                        cnt_upd = cnt_upd + 1
+                    else:
+                        ho = HarvestObject(guid=uuid, job=harvest_job, content=doc,
+                                           extras=[HOExtra(key='status', value='new')])
+                        action = 'ADD'
+                        cnt_add = cnt_add + 1
+
+                    ho.save()
+                    ho_ids.append(ho.id)
+                    harvested.append(uuid)
+                    log.info(f'Queued {geonode_type.config_name} uuid {uuid} for {action}')
 
         except Exception as e:
             self._save_gather_error('Error harvesting GeoNode: %s' % e, harvest_job)
             return None
 
-        query = model.Session.query(HarvestObject.guid, HarvestObject.package_id). \
-            filter(HarvestObject.current == True). \
-            filter(HarvestObject.harvest_source_id == harvest_job.source.id)
-        guid_to_package_id = {}
+        delete = set(guids_in_db) - set(harvested)
 
-        for guid, package_id in query:
-            guid_to_package_id[guid] = package_id
+        log.info(f'Found {len(harvested)} objects,  {cnt_add} new, {cnt_upd} to update, {len(delete)} to remove')
 
-        guids_in_db = set(guid_to_package_id.keys())
-
-        # log.debug('Starting gathering for %s' % url)
-        guids_in_harvest = set(harvested.keys())
-
-        # for doc in chobj.docs:
-        # doc_id = doc.get_id()
-        # guids_in_harvest.add(doc_id)
-
-        new = guids_in_harvest - guids_in_db
-        delete = guids_in_db - guids_in_harvest
-        change = guids_in_db & guids_in_harvest
-
-        ids = []
-        for guid in new:
-            doc = json.dumps(harvested[guid])
-            obj = HarvestObject(guid=guid, job=harvest_job, content=doc,
-                                extras=[HOExtra(key='status', value='new')])
-            obj.save()
-            ids.append(obj.id)
-        for guid in change:
-            doc = json.dumps(harvested[guid])
-            obj = HarvestObject(guid=guid, job=harvest_job, content=doc,
-                                package_id=guid_to_package_id[guid],
-                                extras=[HOExtra(key='status', value='change')])
-            obj.save()
-            ids.append(obj.id)
         for guid in delete:
-            obj = HarvestObject(guid=guid, job=harvest_job,
-                                package_id=guid_to_package_id[guid],
-                                extras=[HOExtra(key='status', value='delete')])
-            ids.append(obj.id)
+            ho = HarvestObject(guid=guid, job=harvest_job,
+                               package_id=guid_to_package_id[guid],
+                               extras=[HOExtra(key='status', value='delete')])
             model.Session.query(HarvestObject). \
                 filter_by(guid=guid). \
                 update({'current': False}, False)
-            obj.save()
+            ho.save()
+            ho_ids.append(ho.id)
 
-        if len(ids) == 0:
+        if len(harvested) == 0 and len(delete) == 0:
             self._save_gather_error('No records received from GeoNode', harvest_job)
             return None
 
-        return ids
+        return ho_ids
 
     def fetch_stage(self, harvest_object):
 
-        # Check harvest object status
-        status = self._get_object_extra(harvest_object, 'status')
-
-        if status == 'delete':
-            # No need to fetch anything, just pass to the import stage
-            return True
-
-        log = logging.getLogger(__name__ + '.GeoNode.fetch')
-        log.debug('GeoNodeHarvester fetch_stage for object: %s', harvest_object.id)
-
-        url = harvest_object.source.url
-        client = GeoNodeClient(url)
-
-        guid = harvest_object.guid
-        content = harvest_object.content
-        obj = json.loads(content)
-        gnid = obj['id']
-
-        if 'type' not in obj:
-            log.error("Bad content in harvest object ID: %d GUID: %s [%s]" % (gnid, guid, content))
-            if GEONODE_TYPE in obj:
-                # it means it already contains data read in this fetch stage. We were expecting info from the gather stage instead
-                log.warning("Harvest object is in the wrong state ID: %d GUID: %s" % (gnid, guid))
-
-            self._save_object_error("Bad content in harvest object ID: %d GUID: %s [%s]" % (gnid, guid, content),
-                                    harvest_object)
-            return False
-
-        objtype = obj['type']
-
-        try:
-            if objtype == GEONODE_LAYER_TYPE:
-                georesource_json = client.get_layer_json(gnid)
-                objdict = json.loads(georesource_json)
-
-            elif objtype == GEONODE_MAP_TYPE:
-                georesource_json = client.get_map_json(gnid)
-                objdict = json.loads(georesource_json)
-
-                # set into the map object the geoexp configuration blob
-                # map_blob_json = client.get_map_data(gnid)
-                # enriching the json with some more info
-                # objdict['MAP_DATA'] = map_blob_json
-
-            elif objtype == GEONODE_DOC_TYPE:
-                georesource_json = client.get_doc_json(gnid)
-                objdict = json.loads(georesource_json)
-
-            else:
-                log.error("Unknown GeoNode resource type %s for ID: %d GUID: %s " % (objtype, gnid, guid))
-                self._save_object_error("Unknown GeoNode resource type %s for ID: %d GUID: %s " % (objtype, gnid, guid),
-                                        harvest_object)
-                return False
-
-            objdict[GEONODE_TYPE] = objtype
-            final_json = json.dumps(objdict)
-
-        except Exception as e:
-            log.error('Error getting GeoNode %s ID %d GUID %s [%r]' % (objtype, gnid, guid, e), e)
-            self._save_object_error('Error getting GeoNode %s ID %d GUID %s [%r]' % (objtype, gnid, guid, e),
-                                    harvest_object)
-            return False
-
-        if final_json is None:
-            self._save_object_error('Empty record for GUID %s type %s' % (guid, objtype), harvest_object)
-            return False
-
-        try:
-            harvest_object.content = final_json.strip()
-            harvest_object.save()
-        except Exception as e:
-            self._save_object_error('Error saving the harvest object for GUID %s type %s [%r]' %
-                                    (guid, objtype, e), harvest_object)
-            return False
-
-        log.debug('JSON content saved for %s (size %s)' % (objtype, len(final_json)))
-        return True
+        return True  # objects fetched in gather stage
 
     def import_stage(self, harvest_object):
 

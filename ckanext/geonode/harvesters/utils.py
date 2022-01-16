@@ -1,3 +1,4 @@
+import datetime
 import logging
 import tempfile
 from urllib.request import urlopen
@@ -42,3 +43,33 @@ def load_wfs_getfeatures(gsbaseurl, typename, outputfile=None, version=WFS_VERSI
     outputfile.seek(0)
 
     return outputfile
+
+
+def format_date(value, format='%Y-%m-%d'):
+    dateformats = (
+        '%Y-%m-%d',
+        '%Y-%m-%dT%H:%M:%S',
+        '%Y-%m-%dT%H:%M:%SZ',
+        '%Y-%m-%dT%H:%M:%S.%f%z',
+        '%Y-%m-%dT%H:%M:%S.%f%zZ',
+        '%Y-%m-%d %H:%M:%S',
+        # '2021-12-17T11:41:54.854696+00:00Z'
+        # '%d-%m-%Y %H:%M:%S',
+    )
+
+    date = None
+    for dateformat in dateformats:
+        try:
+            date = datetime.datetime.strptime(value, dateformat)
+        except ValueError:
+            continue
+
+        try:
+            date = date.strftime(format)
+            return date
+        except ValueError as err:
+            log.error(f'Cannot reformat "{date}" using format "{format}"')
+            return None
+
+    log.error(f'Cannot parse "{value}"')
+    return None
