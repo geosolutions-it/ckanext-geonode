@@ -21,8 +21,8 @@ from ckanext.harvest.harvesters.base import HarvesterBase
 from ckanext.harvest.model import HarvestObject, HarvestObjectExtra as HOExtra
 
 from ckanext.geonode.harvesters.client import GeoNodeClient
-from ckanext.geonode.harvesters.mapper import map_resource
-from ckanext.geonode.harvesters.upload import GeonodeDataDownloader, WFSCSVDownloader
+from ckanext.geonode.harvesters.mappers.base import map_resource
+from ckanext.geonode.harvesters.downloader import GeonodeDataDownloader, WFSCSVDownloader
 from ckanext.geonode.harvesters import (
     CONFIG_GEOSERVERURL, CONFIG_IMPORT_FIELDS, CONFIG_KEYWORD_MAPPING, CONFIG_GROUP_MAPPING,
     CONFIG_GROUP_MAPPING_FIELDNAME, GeoNodeType,
@@ -334,6 +334,8 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
                 previous_object.delete()
 
                 log.info('Document with GUID %s unchanged, skipping...', harvest_object.guid)
+                model.Session.commit()
+                return "unchanged"
             else:
                 package_schema = logic.schema.default_update_package_schema()
                 package_schema['tags'] = tag_schema
