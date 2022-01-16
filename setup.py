@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '1.1'
+version = '1.2'
 
 setup(
     name='ckanext-geonode',
@@ -10,7 +10,7 @@ setup(
     long_description="""\
     """,
     classifiers=[],  # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
-    keywords='',
+    keywords='CKAN GeoNode APIv2 harvest GeoSolutions',
     author='Emanuele Tajariol',
     author_email='etj@geo-solutions.it',
     url='',
@@ -25,8 +25,6 @@ setup(
     entry_points=
     """
         [ckan.plugins]
-        # Add plugins here, eg
-        # myplugin=ckanext.geonode:PluginClass
         geonode_harvester=ckanext.geonode.harvesters.geonode:GeoNodeHarvester
-            """,
+    """,
 )
