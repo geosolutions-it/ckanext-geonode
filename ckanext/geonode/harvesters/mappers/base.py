@@ -286,8 +286,9 @@ def get_resource_package_dict(harvest_object, georesource: GeoNodeResource, conf
 
         x0 = x1 = y0 = y1 = None
 
-        if 'll_bbox_polygon' in georesource._dict:
-            bbox_list = georesource._dict['ll_bbox_polygon']['coordinates']
+        bbox_poly = georesource.get('ll_bbox_polygon')
+        if bbox_poly:
+            bbox_list = bbox_poly['coordinates']
             for bbox in bbox_list:
                 for point in bbox:
                     x0 = point[0] if x0 is None or x0 > point[0] else x0
