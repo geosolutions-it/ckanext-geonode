@@ -103,12 +103,14 @@ def parse_dcatapit_info(georesource: GeoResource, package_dict: dict, extras:dic
 
     # ### themes_aggregate [1..N]
     themes = []
-    for kw_elem in georesource.get('keywords'):
-        # TODO: wait for https://github.com/GeoNode/geonode/issues/8610 to be fixed
-        alt_name = kw_elem['name'] # for the moment just take plain keywords as INSPIRE codes
-        themes.extend(INSPIRE_TO_EUROVOC.get(alt_name, []))
+    for tk in georesource.get('tkeywords', []):
+        if tk['thesaurus']['uri'] == "http://inspire.ec.europa.eu/theme":
+            name = tk['name']
+            themes.extend(INSPIRE_TO_EUROVOC.get(name, []))
+            if 'i18n' in tk and 'it' in tk['i18n']:
+                package_dict['tags'].append({'name': tk['i18n']['it']})
 
-    aggr = [{'theme': t, 'subthemes': []} for t in themes]
+    aggr = [{'theme': t, 'subthemes': []} for t in set(themes)]
     extras['themes_aggregate'] = json.dumps(aggr)
 
     # geonode "created": "2022-01-14T09:16:58.850532Z",
