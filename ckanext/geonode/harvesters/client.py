@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 class GeoNodeClient(object):
 
     def __init__(self, baseurl):
-        self.baseurl = baseurl
+        self.baseurl = baseurl.rstrip('/')
 
     def get_maps(self):
         return self.get_resources(GeoNodeType.MAP_TYPE)
