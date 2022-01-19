@@ -1,0 +1,189 @@
+{
+      "pk": "647",
+      "uuid": "c711b892-60bb-11eb-a589-0242c0a83007",
+      "zoom": 8,
+      "projection": "EPSG:3857",
+      "center_x": 9.03963045702136,
+      "center_y": 45.1661101036861,
+      "urlsuffix": "",
+      "featuredurl": "",
+      "resource_type": "map",
+      "polymorphic_ctype_id": "61",
+      "owner": {
+        "pk": 1001,
+        "username": "adbpo",
+        "first_name": "",
+        "last_name": "",
+        "avatar": "https://www.gravatar.com/avatar/d41d8cd98f00b204e9800998ecf8427e/?s=240",
+        "perms": [
+          "add_resource"
+        ],
+        "link": "https://staging.webgis.adbpo.it/api/v2/users/1001"
+      },
+      "poc": {
+        "pk": 1001,
+        "username": "adbpo",
+        "first_name": "",
+        "last_name": "",
+        "avatar": "https://www.gravatar.com/avatar/d41d8cd98f00b204e9800998ecf8427e/?s=240",
+        "perms": [
+          "add_resource"
+        ],
+        "link": "https://staging.webgis.adbpo.it/api/v2/users/1001"
+      },
+      "metadata_author": {
+        "pk": 1001,
+        "username": "adbpo",
+        "first_name": "",
+        "last_name": "",
+        "avatar": "https://www.gravatar.com/avatar/d41d8cd98f00b204e9800998ecf8427e/?s=240",
+        "perms": [
+          "add_resource"
+        ],
+        "link": "https://staging.webgis.adbpo.it/api/v2/users/1001"
+      },
+      "title": "PAI PGRA Direttiva Alluvioni 2013 Distretto Po",
+      "abstract": "PGRA Direttiva Alluvioni 2013",
+      "attribution": null,
+      "doi": "aaaa",
+      "alternate": null,
+      "date": "2021-01-27T16:21:00Z",
+      "date_type": "publication",
+      "temporal_extent_start": null,
+      "temporal_extent_end": null,
+      "edition": null,
+      "purpose": "",
+      "maintenance_frequency": null,
+      "constraints_other": "",
+      "language": "eng",
+      "supplemental_information": "<p>Nessuna informazione fornita</p>",
+      "data_quality_statement": "",
+      "bbox_polygon": null,
+      "ll_bbox_polygon": null,
+      "srid": "EPSG:4326",
+      "group": {
+        "pk": 15,
+        "name": "ATL"
+      },
+      "popular_count": "17",
+      "share_count": "0",
+      "rating": "0",
+      "featured": false,
+      "is_published": true,
+      "is_approved": true,
+      "detail_url": "https://staging.webgis.adbpo.it/maps/647",
+      "created": "2021-01-27T16:21:57.397046Z",
+      "last_updated": "2021-02-01T14:21:14.576521Z",
+      "raw_abstract": "PGRA Direttiva Alluvioni 2013",
+      "raw_purpose": "",
+      "raw_constraints_other": "",
+      "raw_supplemental_information": "Nessuna informazione fornita",
+      "raw_data_quality_statement": "",
+      "metadata_only": false,
+      "processed": true,
+      "embed_url": "https://staging.webgis.adbpo.it/maps/647/embed",
+      "thumbnail_url": "https://staging.webgis.adbpo.it/uploaded/thumbs/map-c711b892-60bb-11eb-a589-0242c0a83007-thumb.png?v=328b9c6a",
+      "keywords": [
+        {
+          "name": "pgra",
+          "slug": "pgra_1"
+        }
+      ],
+      "tkeywords": [
+        {
+          "name": "Flooded areas (Floods Directive)",
+          "slug": "http-inspire-ec-europa-eu-metadata-codelist-prioritydataset-floodedareas-dir-2007-60",
+          "uri": "http://inspire.ec.europa.eu/metadata-codelist/PriorityDataset/FloodedAreas-dir-2007-60",
+          "thesaurus": {
+            "name": "INSPIRE priority data set",
+            "slug": "3-2-4-2-prioritydataset-rdf",
+            "uri": "http://inspire.ec.europa.eu/metadata-codelist/PriorityDataset"
+          },
+          "i18n": {
+            "en": "Flooded areas (Floods Directive)",
+            "it": "Aree alluvionate (Floods Directive)"
+          }
+        },
+        {
+          "name": "pgra-mappe-di-pericolosita",
+          "slug": "https-pianoalluvioni-adbpo-it-pgra-mappe-di-pericolosita",
+          "uri": "https://pianoalluvioni.adbpo.it/pgra-mappe-di-pericolosita",
+          "thesaurus": {
+            "name": "Piano alluvioni (PGRA)",
+            "slug": "adbpo_pgra",
+            "uri": "https://pianoalluvioni.adbpo.it"
+          },
+          "i18n": {
+            "it": "Mappe di Pericolosità"
+          }
+        },
+        {
+          "name": "pai-mappe-del-dissesto",
+          "slug": "https-pai-adbpo-it-pai-mappe-del-dissesto",
+          "uri": "https://pai.adbpo.it/pai-mappe-del-dissesto",
+          "thesaurus": {
+            "name": "Piano assetto idrogeologico (PAI)",
+            "slug": "adbpo_pai",
+            "uri": "https://pai.adbpo.it"
+          },
+          "i18n": {
+            "it": "Mappe del Dissesto"
+          }
+        },
+          {
+          "name": "nz",
+          "slug": "http-inspire-ec-europa-eu-theme-nz",
+          "uri": "http://inspire.ec.europa.eu/theme/nz",
+          "thesaurus": {
+            "name": "GEMET - INSPIRE themes, version 1.0",
+            "slug": "3-2-4-1-gemet-inspire-themes-rdf",
+            "uri": "http://inspire.ec.europa.eu/theme"
+          },
+          "i18n": {
+            "en": "Natural risk zones",
+            "it": "Zone a rischio naturale"
+          }
+        },
+        {
+          "name": "hb",
+          "slug": "http-inspire-ec-europa-eu-theme-hb",
+          "uri": "http://inspire.ec.europa.eu/theme/hb",
+          "thesaurus": {
+            "name": "GEMET - INSPIRE themes, version 1.0",
+            "slug": "3-2-4-1-gemet-inspire-themes-rdf",
+            "uri": "http://inspire.ec.europa.eu/theme"
+          },
+          "i18n": {
+            "en": "Habitats and biotopes",
+            "it": "Habitat e biotopi"
+          }
+        }
+
+        ],
+
+      "regions": [
+        {
+          "code": "Regionale",
+          "name": "Regionale"
+        },
+        {
+          "code": "GLO",
+          "name": "Global"
+        }
+      ],
+      "category": {
+        "identifier": "environment"
+      },
+      "restriction_code_type": {
+        "identifier": "limitation not listed"
+      },
+      "license": {
+        "identifier": ""
+      },
+      "spatial_representation_type": null,
+      "link": "https://staging.webgis.adbpo.it/api/v2/maps/647",
+      "perms": [
+        "view_resourcebase",
+        "download_resourcebase"
+      ]
+    }

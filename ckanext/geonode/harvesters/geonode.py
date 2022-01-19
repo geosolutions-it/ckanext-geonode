@@ -21,15 +21,15 @@ from ckanext.harvest.harvesters.base import HarvesterBase
 from ckanext.harvest.model import HarvestObject, HarvestObjectExtra as HOExtra
 
 from ckanext.geonode.harvesters.client import GeoNodeClient
-from ckanext.geonode.harvesters.mappers.base import map_resource
+from ckanext.geonode.harvesters.mappers.base import parse
 from ckanext.geonode.harvesters.downloader import GeonodeDataDownloader, WFSCSVDownloader
 from ckanext.geonode.harvesters import (
     CONFIG_GEOSERVERURL, CONFIG_IMPORT_FIELDS, CONFIG_KEYWORD_MAPPING, CONFIG_GROUP_MAPPING,
     CONFIG_GROUP_MAPPING_FIELDNAME, GeoNodeType,
     RESOURCE_DOWNLOADER, TEMP_FILE_THRESHOLD_SIZE, CONFIG_IMPORT_TYPES,
-
 )
-from ckanext.geonode.model.types import Layer, Map, Doc, GeoNodeResourceLink, GeoNodeResource
+
+import ckanext.geonode.harvesters.mappers.dynamic as dynamic
 
 
 log = logging.getLogger(__name__)
@@ -93,6 +93,8 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
             if CONFIG_GROUP_MAPPING in source_config_obj and CONFIG_GROUP_MAPPING_FIELDNAME not in source_config_obj:
                 raise ValueError('%s needs also %s to be defined', CONFIG_GROUP_MAPPING, CONFIG_GROUP_MAPPING_FIELDNAME)
+
+            dynamic.validate_config(source_config_obj)
 
         except ValueError as e:
             log.warning("Config parsing error: %r", e)
@@ -448,7 +450,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
         :rtype: dict
         '''
 
-        package_dict, extras = map_resource(harvest_object, self.source_config)
+        package_dict, extras = parse(harvest_object, self.source_config)
         self._addExtras(package_dict, extras)
         return package_dict
 

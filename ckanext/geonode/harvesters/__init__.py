@@ -45,3 +45,9 @@ class GeoNodeType(Enum):
     @classmethod
     def get_config_names(cls):
         return [t.config_name for t in GeoNodeType]
+
+    @classmethod
+    def parse_by_json_resource_type(cls, rtype):
+        for geonode_type in GeoNodeType:
+            if geonode_type.json_resource_type == rtype:
+                return geonode_type

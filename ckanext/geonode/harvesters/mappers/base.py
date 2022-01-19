@@ -19,6 +19,7 @@ from ckanext.geonode.harvesters import (
     GeoNodeType,
 )
 from ckanext.geonode.harvesters.mappers.dcatapit import parse_dcatapit_info
+from ckanext.geonode.harvesters.mappers.dynamic import parse_georesource
 from ckanext.geonode.harvesters.utils import format_date
 from ckanext.geonode.model.types import Layer, Map, Doc, GeoNodeResource
 
@@ -26,26 +27,27 @@ from ckanext.geonode.model.types import Layer, Map, Doc, GeoNodeResource
 log = logging.getLogger(__name__)
 
 
-def map_resource(harvest_object, config):
+def parse(harvest_object, config):
     json_dict = json.loads(harvest_object.content)
     res_type = json_dict[GEONODE_JSON_TYPE]
+    parsed_type = GeoNodeType.parse_by_json_resource_type(res_type)
 
-    if res_type == GeoNodeType.LAYER_TYPE.json_resource_type:
-        return get_layer_package_dict(harvest_object, harvest_object.content, config)
-    elif res_type == GeoNodeType.MAP_TYPE.json_resource_type:
-        return get_map_package_dict(harvest_object, harvest_object.content, config)
-    elif res_type == GeoNodeType.DOC_TYPE.json_resource_type:
-        return get_doc_package_dict(harvest_object, harvest_object.content, config)
+    if parsed_type == GeoNodeType.LAYER_TYPE:
+        return parse_layer(harvest_object, harvest_object.content, config)
+    elif parsed_type == GeoNodeType.MAP_TYPE:
+        return parse_map(harvest_object, harvest_object.content, config)
+    elif parsed_type == GeoNodeType.DOC_TYPE:
+        return parse_doc(harvest_object, harvest_object.content, config)
     else:
         log.error('Unknown GeoNode type %s' % res_type)
         return None, None
 
 
-def get_layer_package_dict(harvest_object, json_layer, config):
+def parse_layer(harvest_object, json_layer, config):
     # log.debug(f'get_layer_package_dict --> {json_layer}')
     layer = Layer(json_layer)
 
-    package_dict, extras = get_resource_package_dict(harvest_object, layer, config)
+    package_dict, extras = parse_common(harvest_object, layer, config)
     package_dict['tags'].append({'name': 'Layer'})
 
     # full_layer_name = "%s:%s" % (layer.workspace(), layer.name())
@@ -101,11 +103,10 @@ def get_layer_package_dict(harvest_object, json_layer, config):
     return package_dict, extras
 
 
-def get_map_package_dict(harvest_object, json_map, config):
+def parse_map(harvest_object, json_map, config):
     geomap = Map(json_map)
 
-    package_dict, extras = get_resource_package_dict(harvest_object, geomap, config)
-
+    package_dict, extras = parse_common(harvest_object, geomap, config)
     package_dict['tags'].append({'name': 'Map'})
 
     # Add main view
@@ -137,10 +138,10 @@ def get_map_package_dict(harvest_object, json_map, config):
     return package_dict, extras
 
 
-def get_doc_package_dict(harvest_object, json_map, config):
+def parse_doc(harvest_object, json_map, config):
     doc = Doc(json_map)
 
-    package_dict, extras = get_resource_package_dict(harvest_object, doc, config)
+    package_dict, extras = parse_common(harvest_object, doc, config)
 
     package_dict['tags'].append({'name': 'Doc'})
 
@@ -164,7 +165,7 @@ def get_doc_package_dict(harvest_object, json_map, config):
     return package_dict, extras
 
 
-def get_resource_package_dict(harvest_object, georesource: GeoNodeResource, config: dict) -> dict:
+def parse_common(harvest_object, georesource: GeoNodeResource, config: dict) -> dict:
     '''
     Create a package dict for a generic GeoNode resource
     :param harvest_object: HarvestObject domain object (with access to job and source objects)
@@ -236,7 +237,6 @@ def get_resource_package_dict(harvest_object, georesource: GeoNodeResource, conf
 
     # Frequency TODO
     package_dict['frequency'] = "UNKNOWN"
-
 
     extras = {
         'guid': harvest_object.guid,
@@ -320,6 +320,7 @@ def get_resource_package_dict(harvest_object, georesource: GeoNodeResource, conf
             extras['spatial'] = extent_string.strip()
 
     package_dict, extras = parse_dcatapit_info(georesource, package_dict, extras)
+    package_dict, extras = parse_georesource(config, georesource, package_dict, extras)
 
     return package_dict, extras
 
