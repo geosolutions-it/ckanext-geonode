@@ -19,7 +19,7 @@ from ckanext.geonode.harvesters import (
     GeoNodeType,
 )
 from ckanext.geonode.harvesters.mappers.dcatapit import parse_dcatapit_info
-from ckanext.geonode.harvesters.mappers.dynamic import parse_georesource
+from ckanext.geonode.harvesters.mappers.dynamic import parse_dynamic
 from ckanext.geonode.harvesters.utils import format_date
 from ckanext.geonode.model.types import Layer, Map, Doc, GeoNodeResource
 
@@ -46,9 +46,7 @@ def parse(harvest_object, config):
 def parse_layer(harvest_object, json_layer, config):
     # log.debug(f'get_layer_package_dict --> {json_layer}')
     layer = Layer(json_layer)
-
     package_dict, extras = parse_common(harvest_object, layer, config)
-    package_dict['tags'].append({'name': 'Layer'})
 
     # full_layer_name = "%s:%s" % (layer.workspace(), layer.name())
     #
@@ -105,9 +103,7 @@ def parse_layer(harvest_object, json_layer, config):
 
 def parse_map(harvest_object, json_map, config):
     geomap = Map(json_map)
-
     package_dict, extras = parse_common(harvest_object, geomap, config)
-    package_dict['tags'].append({'name': 'Map'})
 
     # Add main view
     package_dict['resources'].append(
@@ -140,10 +136,7 @@ def parse_map(harvest_object, json_map, config):
 
 def parse_doc(harvest_object, json_map, config):
     doc = Doc(json_map)
-
     package_dict, extras = parse_common(harvest_object, doc, config)
-
-    package_dict['tags'].append({'name': 'Doc'})
 
     # # Add resource
     # resource = {}
@@ -320,7 +313,7 @@ def parse_common(harvest_object, georesource: GeoNodeResource, config: dict) -> 
             extras['spatial'] = extent_string.strip()
 
     package_dict, extras = parse_dcatapit_info(georesource, package_dict, extras)
-    package_dict, extras = parse_georesource(config, georesource, package_dict, extras)
+    package_dict, extras = parse_dynamic(config, georesource, package_dict, extras)
 
     return package_dict, extras
 
