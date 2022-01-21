@@ -212,6 +212,89 @@ class DynamicMapperTestCase(unittest.TestCase):
         self.assertEqual('mygroup', pkg_dict['groups'][0]['name'])
 
 
+    def test_mapping_1_1(self):
+        geonode_map = json.loads(load_test_file('map01.json'))
+
+        config = {
+            "dynamic_mapping": [
+                {
+                    "filters": [],
+                    "actions": [
+                        {
+                            "source": "tkeywords[?name=='nz' && thesaurus.uri == 'http://inspire.ec.europa.eu/theme'].name",
+                            "mapping": {"nz": "foo"},
+                            "destination": "tag",
+                        }
+                    ]
+                }
+            ]
+        }
+
+        pkg_dict = {'tags': []}
+
+        validate_config(config)
+        pkg_dict, extras = parse_dynamic(config, geonode_map, pkg_dict, {})
+
+        tags = [t["name"] for t in pkg_dict['tags']]
+        self.assertEqual(1, len(tags))
+        # self.assertEqual(2, len(extras['foobar']))
+        self.assertEqual(['foo'], tags)
+
+    def test_mapping_2_2(self):
+        geonode_map = json.loads(load_test_file('map01.json'))
+
+        config = {
+            "dynamic_mapping": [
+                {
+                    "filters": [],
+                    "actions": [
+                        {
+                            "source": "tkeywords[?thesaurus.uri == 'http://inspire.ec.europa.eu/theme'].name",
+                            "mapping": {"nz": "foo", "hb" : "bar"},
+                            "destination": "tag",
+                        }
+                    ]
+                }
+            ]
+        }
+
+        pkg_dict = {'tags': []}
+
+        validate_config(config)
+        parse_dynamic(config, geonode_map, pkg_dict, {})
+
+        tags = [t["name"] for t in pkg_dict['tags']]
+        self.assertEqual(2, len(tags))
+        self.assertSetEqual(set(('foo', 'bar')), set(tags))
+
+    def test_mapping_2_1(self):
+        geonode_map = json.loads(load_test_file('map01.json'))
+
+        config = {
+            "dynamic_mapping": [
+                {
+                    "filters": [],
+                    "actions": [
+                        {
+                            "source": "tkeywords[?thesaurus.uri == 'http://inspire.ec.europa.eu/theme'].name",
+                            "mapping": {"nz": "foo", "xx" : "bar"},
+                            "destination": "tag",
+                        }
+                    ]
+                }
+            ]
+        }
+
+        pkg_dict = {'tags': []}
+
+        validate_config(config)
+        parse_dynamic(config, geonode_map, pkg_dict, {})
+
+        tags = [t["name"] for t in pkg_dict['tags']]
+        self.assertEqual(1, len(tags))
+        self.assertSetEqual(set(('foo',)), set(tags))
+
+
 def load_test_file(filename):
     file = os.path.join(os.path.dirname(__file__), 'files', filename)
     with open(file, 'r') as f:
