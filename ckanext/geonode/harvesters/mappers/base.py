@@ -5,6 +5,7 @@ from string import Template
 
 from ckan.logic import NotFound, get_action
 from ckan import model, plugins as p
+from ckan.plugins.toolkit import _
 from ckan.model import Session
 
 from ckanext.harvest.harvesters import HarvesterBase
@@ -47,6 +48,36 @@ def parse_layer(harvest_object, json_layer, config):
     # log.debug(f'get_layer_package_dict --> {json_layer}')
     layer = Layer(json_layer)
     package_dict, extras = parse_common(harvest_object, layer, config)
+
+    for resource in [
+        {
+            'name': _('Main page about layer'),
+            'description': _('Layer detail page in GeoNode'),
+            'format': 'html',
+            'url': layer.get('detail_url'),
+        },
+        {
+            'name': _('API link'),
+            'description': _('API link to layer, can be retrieved as HTML or JSON'),
+            'format': 'html',
+            'url': layer.get('link'),
+        },
+        {
+            'name': _('Thumbnail'),
+            'description': _('Default thumbnail for the Layer in GeoNode'),
+            'format': 'png',
+            'url': layer.get('thumbnail_url'),
+        },
+        {
+            'name': _('URL for embedding'),
+            'description': _('URL for embedding the GeoNode resource in other pages'),
+            'format': 'html',
+            'url': layer.get('embed_url'),
+        },
+
+    ]:
+        package_dict['resources'].append(resource)
+
 
     # full_layer_name = "%s:%s" % (layer.workspace(), layer.name())
     #
