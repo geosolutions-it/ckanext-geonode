@@ -17,7 +17,7 @@ from ckanext.geonode.harvesters import (
     CONFIG_IMPORT_FIELDS,
 
     GEONODE_JSON_TYPE,
-    GeoNodeType,
+    GeoNodeType, CONFIG_INCLUDE_ALL_LINKS,
 )
 from ckanext.geonode.harvesters.mappers.dcatapit import parse_dcatapit_info
 from ckanext.geonode.harvesters.mappers.dynamic import parse_dynamic
@@ -33,7 +33,7 @@ def parse(harvest_object, config):
     res_type = json_dict[GEONODE_JSON_TYPE]
     parsed_type = GeoNodeType.parse_by_json_resource_type(res_type)
 
-    if parsed_type == GeoNodeType.LAYER_TYPE:
+    if parsed_type in (GeoNodeType.LAYER_TYPE, GeoNodeType.DATASET_TYPE):
         return parse_layer(harvest_object, harvest_object.content, config)
     elif parsed_type == GeoNodeType.MAP_TYPE:
         return parse_map(harvest_object, harvest_object.content, config)
@@ -51,81 +51,31 @@ def parse_layer(harvest_object, json_layer, config):
 
     for resource in [
         {
-            'name': _('Main page about layer'),
-            'description': _('Layer detail page in GeoNode'),
+            'name': 'Main page about the layer',
+            'description': 'Layer detail page in GeoNode',
             'format': 'html',
             'url': layer.get('detail_url'),
         },
         {
-            'name': _('API link'),
-            'description': _('API link to layer, can be retrieved as HTML or JSON'),
+            'name': 'API link',
+            'description': 'API link to layer',
             'format': 'html',
             'url': layer.get('link'),
         },
         {
-            'name': _('Thumbnail'),
-            'description': _('Default thumbnail for the Layer in GeoNode'),
+            'name': 'Thumbnail',
+            'description': 'Default thumbnail for the layer in GeoNode',
             'format': 'png',
             'url': layer.get('thumbnail_url'),
         },
         {
-            'name': _('URL for embedding'),
-            'description': _('URL for embedding the GeoNode resource in other pages'),
+            'name': 'URL for embedding',
+            'description': 'URL for embedding the GeoNode resource in other pages',
             'format': 'html',
             'url': layer.get('embed_url'),
         },
-
     ]:
         package_dict['resources'].append(resource)
-
-
-    # full_layer_name = "%s:%s" % (layer.workspace(), layer.name())
-    #
-    # # Add WMS resource
-    # resource = {}
-    # resource['format'] = 'wms'
-    # resource['url'] = self.source_config['geoserver_url'] + "/wms"
-    # resource['name'] = full_layer_name
-    # resource['description'] = p.toolkit._('WMS resource')
-    # resource['geoserver_base_url'] = self.source_config['geoserver_url']
-    # resource['store'] = layer.store()
-    # resource['workspace'] = layer.workspace()
-    # resource['layer'] = layer.name()
-    # resource['is_vector'] = layer.is_vector()
-    #
-    # package_dict['resources'].append(resource)
-
-    # # if it's vectorial, add a WFS resource as well. This may be used for chart preview
-    # if layer.is_vector() and self._get_config_value('import_wfs_as_wfs', False):
-    #     wfs_resource = {}
-    #     wfs_resource['format'] = 'wfs'
-    #     wfs_resource['url'] = self.source_config['geoserver_url'] + "/wfs"
-    #     wfs_resource['name'] = full_layer_name
-    #     wfs_resource['description'] = p.toolkit._('WFS resource')
-    #     wfs_resource['geoserver_base_url'] = self.source_config['geoserver_url']
-    #     wfs_resource['store'] = layer.store()
-    #     wfs_resource['workspace'] = layer.workspace()
-    #     wfs_resource['layer'] = layer.name()
-    #     wfs_resource['is_vector'] = layer.is_vector()
-    #     package_dict['resources'].append(wfs_resource)
-
-    # # if it's vectorial, add a CSV resource as well. This may be used for chart preview
-    # if layer.is_vector() and self._get_config_value('import_wfs_as_csv', False):
-    #     wfs_resource = {}
-    #     wfs_resource['format'] = 'csv'
-    #     wfs_resource['url'] = utils.get_wfs_getfeatures_url(self.source_config['geoserver_url'], full_layer_name)
-    #
-    #     wfs_resource['name'] = full_layer_name
-    #     wfs_resource['description'] = p.toolkit._('CSV resource')
-    #     wfs_resource['geoserver_base_url'] = self.source_config['geoserver_url']
-    #     wfs_resource['store'] = layer.store()
-    #     wfs_resource['workspace'] = layer.workspace()
-    #     wfs_resource['layer'] = layer.name()
-    #     wfs_resource['is_vector'] = layer.is_vector()
-    #     wfs_resource[RESOURCE_DOWNLOADER] = \
-    #         WFSCSVDownloader(self.source_config['geoserver_url'], full_layer_name, layer.name() + ".csv")
-    #
-    #     package_dict['resources'].append(wfs_resource)
 
     extras['is_vector'] = layer.is_vector()
 
@@ -137,33 +87,35 @@ def parse_map(harvest_object, json_map, config):
     package_dict, extras = parse_common(harvest_object, geomap, config)
 
     # Add main view
-    package_dict['resources'].append(
+    for resource in (
         {
-            'name': 'Map view',
-            'description': p.toolkit._('Map client in GeoNode'),
+            'name': 'Main page about the map',
+            'description': 'Map detail page in GeoNode',
             'format': 'html',
-            'url': f'{harvest_object.source.url}/maps/{geomap.id()}/view',
-        })
-    # Add map details
-    package_dict['resources'].append(
+            'url': geomap.get('detail_url'),
+        },
         {
-            'name': 'Map details',
-            'description': p.toolkit._('Map details in GeoNode'),
+            'name': 'API link',
+            'description': 'API link to map',
             'format': 'html',
-            'url': f'{harvest_object.source.url}/maps/{geomap.id()}',
-        })
-    # Add WMC resource
-    package_dict['resources'].append(
+            'url': geomap.get('link'),
+        },
         {
-            'name': 'Map',
-            'description': p.toolkit._('Full Web Map Context'),
-            'format': 'wmc',
-            'url': f'{harvest_object.source.url}/maps/{geomap.id()}/wmc',
-            # 'map_data': geomap.map_data()
-        })
+            'name': 'Thumbnail',
+            'description': 'Default thumbnail for the map in GeoNode',
+            'format': 'png',
+            'url': geomap.get('thumbnail_url'),
+        },
+        {
+            'name': 'URL for embedding',
+            'description': 'URL for embedding the GeoNode resource in other pages',
+            'format': 'html',
+            'url': geomap.get('embed_url'),
+        },
+    ):
+        package_dict['resources'].append(resource)
 
     return package_dict, extras
-
 
 def parse_doc(harvest_object, json_map, config):
     doc = Doc(json_map)
@@ -214,22 +166,23 @@ def parse_common(harvest_object, georesource: GeoNodeResource, config: dict) -> 
     resources = []
     pos = 0
 
-    for link in georesource.links():
-        pos = pos + 1
-        is_main = link.name() == georesource.alternate()
-        resource = {
-            'url': link.url(),
-            'name': link.name(),
-            'description': f'{link.name()}\n\n{link.extension()} {link.link_type()}',
-            'mimetype': link.mime(),
-            'format': link.extension(),
-            'position': pos if not is_main else 0
-        }
-        if is_main:
-            log.debug(f'Found main resource {link.name()}')
-            resources.insert(0, resource)
-        else:
-            resources.append(resource)
+    if config.get(CONFIG_INCLUDE_ALL_LINKS, False):
+        for link in georesource.links():
+            pos = pos + 1
+            is_main = link.name() == georesource.alternate()
+            resource = {
+                'url': link.url(),
+                'name': link.name(),
+                'description': f'{link.name()}\n\n{link.extension()} {link.link_type()}',
+                'mimetype': link.mime(),
+                'format': link.extension(),
+                'position': pos if not is_main else 0
+            }
+            if is_main:
+                log.debug(f'Found main resource {link.name()}')
+                resources.insert(0, resource)
+            else:
+                resources.append(resource)
 
     package_dict = {
         'title': georesource.title(),
@@ -265,7 +218,9 @@ def parse_common(harvest_object, georesource: GeoNodeResource, config: dict) -> 
     extras = {
         'guid': harvest_object.guid,
         'geonode_uuid': georesource.get('uuid'),
-        'geonode_author': georesource.owner(),
+        'geonode_owner': georesource.owner(),
+        'geonode_author': georesource.md_author(),
+        'geonode_poc': georesource.poc(),
         'geonode_purpose': georesource.purpose(),
         'geonode_suppinfo': georesource.get('supplemental_information'),
         'geonode_temporal_start': georesource.get('temporal_extent_start'),

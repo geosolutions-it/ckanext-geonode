@@ -15,6 +15,7 @@ from ckan import plugins as p
 
 from ckan.lib.navl.validators import not_empty
 from ckan.plugins.core import SingletonPlugin, implements
+from ckanext.geonode.harvesters.utils import tags_trimmer
 
 from ckanext.harvest.interfaces import IHarvester
 from ckanext.harvest.harvesters.base import HarvesterBase
@@ -25,8 +26,10 @@ from ckanext.geonode.harvesters.mappers.base import parse
 from ckanext.geonode.harvesters.downloader import GeonodeDataDownloader, WFSCSVDownloader
 from ckanext.geonode.harvesters import (
     CONFIG_GEOSERVERURL, CONFIG_IMPORT_FIELDS, CONFIG_KEYWORD_MAPPING, CONFIG_GROUP_MAPPING,
-    CONFIG_GROUP_MAPPING_FIELDNAME, GeoNodeType,
-    RESOURCE_DOWNLOADER, TEMP_FILE_THRESHOLD_SIZE, CONFIG_IMPORT_TYPES,
+    CONFIG_GROUP_MAPPING_FIELDNAME, CONFIG_INCLUDE_ALL_LINKS, CONFIG_IMPORT_TYPES,
+    GeoNodeType,
+    RESOURCE_DOWNLOADER, TEMP_FILE_THRESHOLD_SIZE,
+    DEFAULT_HARVEST_TYPES_LIST,
 )
 
 import ckanext.geonode.harvesters.mappers.dynamic as dynamic
@@ -90,6 +93,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             self.check_mapping(CONFIG_GROUP_MAPPING, source_config_obj, str)
             self.check_mapping(CONFIG_IMPORT_TYPES, source_config_obj, bool,
                                lambda x: x in (GeoNodeType.get_config_names()))
+            self.check_mapping(CONFIG_INCLUDE_ALL_LINKS, source_config_obj, bool)
 
             if CONFIG_GROUP_MAPPING in source_config_obj and CONFIG_GROUP_MAPPING_FIELDNAME not in source_config_obj:
                 raise ValueError('%s needs also %s to be defined', CONFIG_GROUP_MAPPING, CONFIG_GROUP_MAPPING_FIELDNAME)
@@ -150,15 +154,18 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
             cnt_upd = 0
             cnt_add = 0
 
-            for geonode_type in GeoNodeType:
+            # choose the types to be harvested
+            harvest_types_list :list = DEFAULT_HARVEST_TYPES_LIST
 
-                if CONFIG_IMPORT_TYPES in self.source_config:
-                    # if import config is there, only import defined types
-                    import_types = self.source_config[CONFIG_IMPORT_TYPES]
-                    if not import_types.get(geonode_type.config_name, False):
-                        log.info(f'Skipping resource type: {geonode_type}')
-                        continue
+            if CONFIG_IMPORT_TYPES in self.source_config:
+                # if import config is there, only import defined types
+                import_types = self.source_config[CONFIG_IMPORT_TYPES]
+                harvest_types_names = [cname for cname in import_types if import_types[cname]]
+                log.warning(f"IMPORT TYPES {harvest_types_names}")
+                harvest_types_list = [GeoNodeType.get_by_config_name(cname) for cname in harvest_types_names]
 
+            # harvest each configured type
+            for geonode_type in harvest_types_list:
                 for obj in client.get_resources(geonode_type):
                     uuid = obj['uuid']
                     doc = json.dumps(obj)
@@ -285,7 +292,7 @@ class GeoNodeHarvester(HarvesterBase, SingletonPlugin):
 
         # The default package schema does not like Upper case tags
         tag_schema = logic.schema.default_tags_schema()
-        tag_schema['name'] = [not_empty, str]
+        tag_schema['name'] = [not_empty, tags_trimmer(100), str]
 
         # Flag this object as the current one
         harvest_object.current = True

@@ -27,10 +27,13 @@ CONFIG_IMPORT_FIELDS_CKN = ''
 
 CONFIG_IMPORT_TYPES = 'import'
 
+CONFIG_INCLUDE_ALL_LINKS = 'include_all_links'
+
 
 class GeoNodeType(Enum):
 
     LAYER_TYPE = 'layers', 'layers', 'layer',
+    DATASET_TYPE = 'layers', 'datasets', 'dataset',
     MAP_TYPE = 'maps', 'maps', 'map',
     DOC_TYPE = 'docs', 'documents', 'document',
 
@@ -51,3 +54,16 @@ class GeoNodeType(Enum):
         for geonode_type in GeoNodeType:
             if geonode_type.json_resource_type == rtype:
                 return geonode_type
+
+    @classmethod
+    def get_by_config_name(cls, cname):
+        for type in GeoNodeType:
+            if type.config_name == cname:
+                return type
+
+
+DEFAULT_HARVEST_TYPES_LIST = [
+    GeoNodeType.LAYER_TYPE,
+    GeoNodeType.MAP_TYPE,
+    GeoNodeType.DOC_TYPE,
+]

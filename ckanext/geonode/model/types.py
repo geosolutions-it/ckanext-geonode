@@ -63,14 +63,23 @@ class GeoNodeResource(object):
         return self._dict['thumbnail_url']
 
     def owner(self):
-        owner = self._dict['owner']
+        return self._get_user("owner")
 
-        if 'first_name' in owner and 'last_name' in owner:
-            return "%s %s" % (owner['first_name'], owner['last_name'])
-        elif 'first_name' not in owner and 'last_name' not in owner:
-            return '[%s]' % owner['username']
+    def poc(self):
+        return self._get_user("poc")
+
+    def md_author(self):
+        return self._get_user("metadata_author")
+
+    def _get_user(self, rolename):
+        role = self._dict[rolename]
+
+        if 'first_name' in role and 'last_name' in role:
+            return f"{role['first_name']} {role['last_name']}"
+        elif 'first_name' not in role and 'last_name' not in role:
+            return f"{role['username']}"
         else:
-            return '%s [%s]' % (owner['first_name'] or owner['last_name'], owner['username'])
+            return f"{role['first_name'] or role['last_name']} [{role['username']}]"
 
     def owner_email(self):
         owner = self._dict['owner']
@@ -128,7 +137,8 @@ class Layer(GeoResource):
         return self._dict['store']
 
     def is_vector(self):
-        return self._dict['storeType'] == 'dataStore'
+        return self._dict.get('storeType', None) == 'dataStore' or \
+               self._dict.get('subtype', None) == 'vector'
 
 
 class Map(GeoResource):

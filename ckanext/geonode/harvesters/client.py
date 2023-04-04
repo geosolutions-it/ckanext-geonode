@@ -13,12 +13,21 @@ class GeoNodeClient(object):
 
     def __init__(self, baseurl):
         self.baseurl = baseurl.rstrip('/')
+        self.version = self._check_version()
+        log.info(f'GeoNode version is {self.version}')
+
+    def _check_version(self):
+        url = f'{self.baseurl}/api/v2/'
+        log.debug('Checking GeoNode version at %s', url)
+        response = urlopen(url).read()
+        json_content = json.loads(response)
+        return '3' if 'layers' in json_content else '4'
 
     def get_maps(self):
         return self.get_resources(GeoNodeType.MAP_TYPE)
 
     def get_layers(self):
-        return self.get_resources(GeoNodeType.LAYER_TYPE)
+        return self.get_resources(GeoNodeType.LAYER_TYPE if self.version=='3' else GeoNodeType.DATASET_TYPE)
 
     def get_documents(self):
         return self.get_resources(GeoNodeType.DOC_TYPE)
@@ -26,10 +35,14 @@ class GeoNodeClient(object):
     def get_resources(self, res_type: GeoNodeType):
         ''' return geonode resource json '''
 
+        # adjust model according to version
+        if res_type in (GeoNodeType.LAYER_TYPE, GeoNodeType.DATASET_TYPE):
+            res_type = GeoNodeType.LAYER_TYPE if self.version == '3' else GeoNodeType.DATASET_TYPE
+
         url = f'{self.baseurl}/api/v2/{res_type.api_path}/'
 
         while True:
-            log.debug('Retrieving %s at GeoNode URL %s', res_type.config_name, url)
+            log.debug('Retrieving %s at GeoNode URL %s', res_type.api_path, url)
             response = urlopen(url).read()
             json_content = json.loads(response)
 

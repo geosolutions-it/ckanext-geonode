@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '1.2'
+version = '1.3'
 
 setup(
     name='ckanext-geonode',
@@ -26,5 +26,14 @@ setup(
     """
         [ckan.plugins]
         geonode_harvester=ckanext.geonode.harvesters.geonode:GeoNodeHarvester
+        geonode=ckanext.geonode.plugin:GeoNodePlugin
     """,
+
+    message_extractors={
+        'ckanext': [
+            ('**.py', 'python', None),
+            ('**.js', 'javascript', None),
+            ('**/templates/**.html', 'ckan', None),
+        ],
+    }
 )

@@ -1,0 +1,85 @@
+# Italian translations for ckanext-geonode.
+# Copyright (C) 2023 GeoSolutions
+# This file is distributed under the same license as the ckanext-geonode
+# project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2023.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: ckanext-geonode 1.3\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2023-04-04 12:15+0200\n"
+"PO-Revision-Date: 2023-04-04 12:17+0200\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: it\n"
+"Language-Team: it <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.7.0\n"
+
+#: ckanext/geonode/harvesters/mappers/base.py:54
+msgid "Main page about the layer"
+msgstr "Pagina principale del layer"
+
+#: ckanext/geonode/harvesters/mappers/base.py:55
+msgid "Layer detail page in GeoNode"
+msgstr "Pagina dei dettagli del layer in GeoNode"
+
+#: ckanext/geonode/harvesters/mappers/base.py:60
+msgid "API link"
+msgstr "API link"
+
+#: ckanext/geonode/harvesters/mappers/base.py:61
+msgid "API link to layer"
+msgstr "Link all'API REST per la gestione del layer "
+
+#: ckanext/geonode/harvesters/mappers/base.py:66
+msgid "Thumbnail"
+msgstr "Miniatura"
+
+#: ckanext/geonode/harvesters/mappers/base.py:67
+msgid "Default thumbnail for the layer in GeoNode"
+msgstr "Miniatura di default per il layer"
+
+#: ckanext/geonode/harvesters/mappers/base.py:72
+msgid "URL for embedding"
+msgstr "URL per l'embedding"
+
+#: ckanext/geonode/harvesters/mappers/base.py:73
+msgid "URL for embedding the GeoNode resource in other pages"
+msgstr "URL per incorporare la risorsa GeoNode in altre pagine"
+
+
+msgid "Main page about the map"
+msgstr "Pagina principale della mappa"
+
+msgid "Map detail page in GeoNode"
+msgstr "Pagina dei dettagli della mappa in GeoNode"
+
+msgid "API link to map"
+msgstr "Link all'API REST per la gestione della mappa"
+
+msgid "Default thumbnail for the map in GeoNode"
+msgstr "Miniatura di default per la mappa"
+
+
+
+msgid "geonode_author"
+msgstr "GeoNode: Autore dei metadati"
+
+msgid "geonode_owner"
+msgstr "GeoNode: Titolare dei dati"
+
+msgid "geonode_poc"
+msgstr "GeoNode: Contatto per il dataset"
+
+msgid "geonode_purpose"
+msgstr "GeoNode: Finalità del dataset (GeoNode)"
+
+msgid "geonode_suppinfo"
+msgstr "GeoNode: Informazioni supplementari"
+
+msgid "geonode_uuid"
+msgstr "GeoNode: UUID"

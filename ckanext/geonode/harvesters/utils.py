@@ -73,3 +73,17 @@ def format_date(value, format='%Y-%m-%d'):
 
     log.error(f'Cannot parse "{value}"')
     return None
+
+
+def tags_trimmer(default_limit=100):
+    '''
+    If the value is over a limit, it changes it to the limit. The limit is
+    defined by a configuration option, or if that is not set, a given int
+    default_limit.
+    '''
+    def callable(key, data, errors, context):
+
+        if len(data.get(key)) > default_limit:
+            data[key] = data[key][:default_limit]
+
+    return callable
